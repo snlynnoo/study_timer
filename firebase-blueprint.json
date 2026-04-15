@@ -1,0 +1,81 @@
+{
+  "entities": {
+    "Session": {
+      "title": "Session",
+      "description": "A study session logged by the user.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The UID of the user who owns this session."
+        },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "description": "The date of the session (YYYY-MM-DD)."
+        },
+        "startTime": {
+          "type": "string",
+          "description": "The start time of the session (HH:mm)."
+        },
+        "endTime": {
+          "type": "string",
+          "description": "The end time of the session (HH:mm)."
+        },
+        "duration": {
+          "type": "number",
+          "description": "The duration of the session in minutes."
+        },
+        "mainTask": {
+          "type": "string",
+          "description": "The main module or task being studied."
+        },
+        "topic": {
+          "type": "string",
+          "description": "The specific topic of study."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The timestamp when the session was created."
+        }
+      },
+      "required": ["userId", "date", "startTime", "endTime", "duration", "mainTask", "topic", "createdAt"]
+    },
+    "UserSettings": {
+      "title": "UserSettings",
+      "description": "User preferences for the timer, theme, and sound.",
+      "type": "object",
+      "properties": {
+        "timer": {
+          "type": "object",
+          "description": "Timer duration settings."
+        },
+        "theme": {
+          "type": "object",
+          "description": "Theme color settings."
+        },
+        "sound": {
+          "type": "object",
+          "description": "Sound and notification settings."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The timestamp when the settings were last updated."
+        }
+      },
+      "required": ["timer", "theme", "sound", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/sessions/{sessionId}": {
+      "schema": "Session",
+      "description": "Collection of study sessions."
+    },
+    "/settings/{userId}": {
+      "schema": "UserSettings",
+      "description": "User-specific settings and preferences."
+    }
+  }
+}

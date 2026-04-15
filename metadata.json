@@ -1,0 +1,6 @@
+{
+  "name": "Study Timer by Sai",
+  "description": "A Pomodoro study timer with Google Sheets integration for tracking study sessions and visualizing progress.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
