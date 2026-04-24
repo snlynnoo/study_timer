@@ -3,7 +3,7 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChang
 import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, query, where, orderBy, serverTimestamp, getDocFromServer, setDoc, getDoc } from "firebase/firestore";
 
 // Firebase configuration
-const firebaseConfig = {
+const firebaseConfig: any = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
@@ -13,33 +13,61 @@ const firebaseConfig = {
   firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID
 };
 
-// Fallback for AI Studio preview environment
+// Fallback for local development/AI Studio
+// We use a synchronous check to avoid top-level await issues in some environments
 if (!firebaseConfig.apiKey) {
+  console.warn("Firebase API Key missing from environment variables. Checking for local config...");
   try {
-    // @ts-ignore
-    const localConfig = await import("../../firebase-applet-config.json");
-    Object.assign(firebaseConfig, {
-      apiKey: localConfig.apiKey,
-      authDomain: localConfig.authDomain,
-      projectId: localConfig.projectId,
-      storageBucket: localConfig.storageBucket,
-      messagingSenderId: localConfig.messagingSenderId,
-      appId: localConfig.appId,
-      firestoreDatabaseId: localConfig.firestoreDatabaseId
-    });
+    // This is a dynamic import that will be handled by Vite
+    // In production (Vercel), this file won't exist, so it will fall into the catch block
+    const localConfig = await import("../../firebase-applet-config.json").then(m => m.default || m);
+    if (localConfig) {
+      Object.assign(firebaseConfig, {
+        apiKey: localConfig.apiKey,
+        authDomain: localConfig.authDomain,
+        projectId: localConfig.projectId,
+        storageBucket: localConfig.storageBucket,
+        messagingSenderId: localConfig.messagingSenderId,
+        appId: localConfig.appId,
+        firestoreDatabaseId: localConfig.firestoreDatabaseId
+      });
+    }
   } catch (e) {
-    console.warn("Firebase config not found in environment or local file.");
+    console.error("CRITICAL: Firebase configuration not found. Please set VITE_FIREBASE_* environment variables in Vercel.");
   }
 }
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Initialize Firebase only if we have a valid config
+let app;
+try {
+  if (!firebaseConfig.apiKey) {
+    throw new Error("Firebase API Key is required for initialization.");
+  }
+  app = initializeApp(firebaseConfig);
+} catch (error) {
+  console.error("Firebase initialization failed:", error);
+  // Create a dummy app object to prevent total crash, but auth/db will be unusable
+  app = { name: "[DEFAULT]" } as any;
+}
+
 export const auth = getAuth(app);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || "(default)");
 export const googleProvider = new GoogleAuthProvider();
 
-// Auth helpers
-export const loginWithGoogle = () => signInWithPopup(auth, googleProvider);
+// Auth helpers with better error handling
+export const loginWithGoogle = async () => {
+  try {
+    return await signInWithPopup(auth, googleProvider);
+  } catch (error: any) {
+    console.error("Login failed:", error);
+    if (error.code === "auth/unauthorized-domain") {
+      alert(`Domain not authorized. Please add this domain to Firebase Console -> Authentication -> Settings -> Authorized Domains: ${window.location.hostname}`);
+    } else {
+      alert(`Login error: ${error.message}`);
+    }
+    throw error;
+  }
+};
 export const logout = () => signOut(auth);
 
 // Error handling for Firestore

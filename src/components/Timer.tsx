@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
-import { Play, Pause, RotateCcw, Coffee, Brain, Settings } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
+import React from "react";
+import { Play, Pause, RotateCcw, Coffee, Brain } from "lucide-react";
+import { motion } from "motion/react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -11,6 +11,8 @@ function cn(...inputs: ClassValue[]) {
 interface TimerProps {
   mode: "work" | "shortBreak" | "longBreak";
   duration: number; // in minutes
+  timeLeft: number;
+  setTimeLeft: (v: number | ((prev: number) => number)) => void;
   onComplete: () => void;
   isActive: boolean;
   setIsActive: (active: boolean) => void;
@@ -21,38 +23,15 @@ interface TimerProps {
   };
 }
 
-export default function Timer({ mode, duration, onComplete, isActive, setIsActive, theme }: TimerProps) {
-  const [timeLeft, setTimeLeft] = useState(duration * 60);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-
-  const onCompleteRef = useRef(onComplete);
-  useEffect(() => {
-    onCompleteRef.current = onComplete;
-  }, [onComplete]);
-
-  useEffect(() => {
-    setTimeLeft(duration * 60);
-    setIsActive(false);
-  }, [duration, mode, setIsActive]);
-
-  useEffect(() => {
-    if (isActive && timeLeft > 0) {
-      timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => prev - 1);
-      }, 1000);
-    } else if (timeLeft <= 0 && isActive) {
-      console.log("Timer hit zero! Calling onComplete.");
-      if (timerRef.current) clearInterval(timerRef.current);
-      onCompleteRef.current();
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isActive, timeLeft]);
-
+export default function Timer({ 
+  mode, 
+  duration, 
+  timeLeft, 
+  setTimeLeft, 
+  isActive, 
+  setIsActive, 
+  theme 
+}: Omit<TimerProps, "onComplete">) {
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;

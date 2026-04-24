@@ -61,6 +61,8 @@ export default function App() {
     return { work: 25, shortBreak: 5, longBreak: 15, darkModeWhenRunning: false };
   });
 
+  const [timeLeft, setTimeLeft] = useState(settings[mode] * 60);
+
   const [theme, setTheme] = useState<ThemeSettings>(() => {
     const saved = localStorage.getItem("pomo_theme");
     return saved ? JSON.parse(saved) : { work: "bg-indigo-900", shortBreak: "bg-yellow-400", longBreak: "bg-green-500" };
@@ -136,38 +138,63 @@ export default function App() {
 
     const path = `settings/${user.uid}`;
     const unsubscribe = onSnapshot(doc(db, "settings", user.uid), (snapshot) => {
+      // 1. Ignore local echoes (latency compensation)
+      if (snapshot.metadata.hasPendingWrites) return;
+
       if (snapshot.exists()) {
         const data = snapshot.data();
         
-        // Migrate broken Mixkit URLs in sound settings
-        if (data.sound?.type === "https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3") {
-          data.sound.type = "https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3";
-        } else if (data.sound?.type === "https://assets.mixkit.co/active_storage/sfx/2572/2572-preview.mp3") {
-          data.sound.type = "https://assets.mixkit.co/active_storage/sfx/951/951-preview.mp3";
-        }
-
-        // Only update local state if it's different and we're not currently syncing
-        // AND if we haven't made a local change in the last 3 seconds
+        // 2. Ignore server updates if we've made a local change very recently (10s window)
         const now = Date.now();
-        if (now - lastLocalChangeRef.current < 3000) {
-          console.log("Ignoring server sync because of recent local change");
+        if (now - lastLocalChangeRef.current < 10000) {
+          console.log("Ignoring server sync: recent local change detected");
+          setIsInitialSyncDone(true);
           return;
         }
 
-        setSettings(prev => {
-          const newTimer = { ...data.timer };
-          if (newTimer.darkModeWhenRunning === undefined) newTimer.darkModeWhenRunning = false;
-          if (JSON.stringify(newTimer) !== JSON.stringify(prev)) return newTimer;
-          return prev;
-        });
-        setTheme(prev => {
-          if (JSON.stringify(data.theme) !== JSON.stringify(prev)) return data.theme;
-          return prev;
-        });
-        setSound(prev => {
-          if (JSON.stringify(data.sound) !== JSON.stringify(prev)) return data.sound;
-          return prev;
-        });
+        // 3. Robust comparison and update
+        if (data.timer) {
+          setSettings(prev => {
+            const newTimer = { ...data.timer };
+            if (newTimer.darkModeWhenRunning === undefined) newTimer.darkModeWhenRunning = false;
+            
+            // Sort keys to ensure stable stringification
+            const sortedNew = Object.keys(newTimer).sort().reduce((acc: any, key) => {
+              acc[key] = (newTimer as any)[key];
+              return acc;
+            }, {});
+            const sortedPrev = Object.keys(prev).sort().reduce((acc: any, key) => {
+              acc[key] = (prev as any)[key];
+              return acc;
+            }, {});
+
+            if (JSON.stringify(sortedNew) !== JSON.stringify(sortedPrev)) {
+              console.log("Settings updated from Firestore:", sortedNew);
+              return sortedNew;
+            }
+            return prev;
+          });
+        }
+        
+        if (data.theme) {
+          setTheme(prev => {
+            if (JSON.stringify(data.theme) !== JSON.stringify(prev)) return data.theme;
+            return prev;
+          });
+        }
+        
+        if (data.sound) {
+          setSound(prev => {
+            // Migrate broken Mixkit URLs
+            if (data.sound.type === "https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3") {
+              data.sound.type = "https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3";
+            } else if (data.sound.type === "https://assets.mixkit.co/active_storage/sfx/2572/2572-preview.mp3") {
+              data.sound.type = "https://assets.mixkit.co/active_storage/sfx/951/951-preview.mp3";
+            }
+            if (JSON.stringify(data.sound) !== JSON.stringify(prev)) return data.sound;
+            return prev;
+          });
+        }
       }
       setIsInitialSyncDone(true);
     }, (err) => {
@@ -182,8 +209,6 @@ export default function App() {
   useEffect(() => {
     if (!user || !isInitialSyncDone) return;
     
-    lastLocalChangeRef.current = Date.now();
-    
     const timer = setTimeout(async () => {
       const path = `settings/${user.uid}`;
       try {
@@ -194,6 +219,7 @@ export default function App() {
           sound: sound,
           updatedAt: serverTimestamp()
         });
+        console.log("Settings saved to Firestore successfully");
       } catch (err) {
         handleFirestoreError(err, OperationType.WRITE, path);
       } finally {
@@ -203,6 +229,13 @@ export default function App() {
 
     return () => clearTimeout(timer);
   }, [user, settings, theme, sound, isInitialSyncDone]);
+
+  // Track local changes separately to avoid race conditions
+  useEffect(() => {
+    if (isInitialSyncDone) {
+      lastLocalChangeRef.current = Date.now();
+    }
+  }, [settings, theme, sound, isInitialSyncDone]);
 
   useEffect(() => {
     if (lastSyncStatus === "success") {
@@ -321,6 +354,28 @@ export default function App() {
     }
     setIsActive(active);
   }, [startTime]);
+
+  useEffect(() => {
+    if (!isActive) {
+      const newTime = settings[mode] * 60;
+      console.log(`Setting timeLeft to ${newTime}s based on mode: ${mode} and settings:`, settings);
+      setTimeLeft(newTime);
+    }
+  }, [mode, settings, isActive]);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    if (isActive && timeLeft > 0) {
+      interval = setInterval(() => {
+        setTimeLeft((prev) => prev - 1);
+      }, 1000);
+    } else if (timeLeft <= 0 && isActive) {
+      handleTimerComplete();
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isActive, timeLeft, handleTimerComplete]);
 
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
@@ -555,7 +610,8 @@ export default function App() {
               <Timer
                 mode={mode}
                 duration={settings[mode]}
-                onComplete={handleTimerComplete}
+                timeLeft={timeLeft}
+                setTimeLeft={setTimeLeft}
                 isActive={isActive}
                 setIsActive={toggleTimer}
                 theme={theme}
