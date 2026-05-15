@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, Plus, Download, Calendar as CalendarIcon, Clock, Tag, BookOpen } from "lucide-react";
+import { X, Plus, Download, Calendar as CalendarIcon, Clock, Tag, BookOpen, Check } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Session } from "../types";
 import { format, parseISO, isWithinInterval, startOfDay, endOfDay } from "date-fns";
@@ -124,8 +124,8 @@ export default function HistoryActions({ sessions, onInsert, isDarkMode }: Histo
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className={`relative w-full max-w-md p-8 rounded-3xl shadow-2xl ${
-                isDarkMode ? "bg-gray-900 text-white" : "bg-white text-gray-800"
+              className={`relative w-full max-w-2xl p-8 rounded-3xl shadow-2xl border ${
+                isDarkMode ? "bg-gray-900 border-white/10 text-white" : "bg-white border-gray-100 text-gray-800"
               }`}
             >
               <div className="flex items-center justify-between mb-8">
@@ -136,103 +136,113 @@ export default function HistoryActions({ sessions, onInsert, isDarkMode }: Histo
               </div>
 
               <form onSubmit={handleInsert} className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                      <CalendarIcon className="w-3 h-3" /> Date
-                    </label>
-                    <input
-                      type="date"
-                      required
-                      value={newSession.date}
-                      onChange={(e) => setNewSession({ ...newSession, date: e.target.value })}
-                      className={`w-full px-4 py-3 rounded-xl font-bold focus:outline-none focus:ring-2 transition-all ${
-                        isDarkMode ? "bg-white/5 focus:ring-white/20" : "bg-gray-100 focus:ring-gray-200"
-                      }`}
-                    />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Left Column: Task Info */}
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                        <Tag className="w-3 h-3" /> Main Task
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. ERP Project"
+                        value={newSession.mainTask}
+                        onChange={(e) => setNewSession({ ...newSession, mainTask: e.target.value })}
+                        className={`w-full px-4 py-3 rounded-xl font-bold focus:outline-none focus:ring-2 transition-all ${
+                          isDarkMode ? "bg-white/10 border border-white/20 text-white focus:ring-white/30" : "bg-gray-100 border border-gray-300 focus:ring-gray-300"
+                        }`}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                        <BookOpen className="w-3 h-3" /> Topic
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Module A"
+                        value={newSession.topic}
+                        onChange={(e) => setNewSession({ ...newSession, topic: e.target.value })}
+                        className={`w-full px-4 py-3 rounded-xl font-bold focus:outline-none focus:ring-2 transition-all ${
+                          isDarkMode ? "bg-white/10 border border-white/20 text-white focus:ring-white/30" : "bg-gray-100 border border-gray-300 focus:ring-gray-300"
+                        }`}
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                      <Clock className="w-3 h-3" /> Duration (min)
-                    </label>
-                    <input
-                      type="number"
-                      required
-                      min="1"
-                      value={newSession.duration}
-                      onChange={(e) => setNewSession({ ...newSession, duration: parseInt(e.target.value) || 0 })}
-                      className={`w-full px-4 py-3 rounded-xl font-bold focus:outline-none focus:ring-2 transition-all ${
-                        isDarkMode ? "bg-white/5 focus:ring-white/20" : "bg-gray-100 focus:ring-gray-200"
-                      }`}
-                    />
+
+                  {/* Right Column: Time & Date Info */}
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                        <CalendarIcon className="w-3 h-3" /> Date & Duration
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="date"
+                          required
+                          value={newSession.date}
+                          onChange={(e) => setNewSession({ ...newSession, date: e.target.value })}
+                          className={`flex-1 px-4 py-3 rounded-xl font-bold focus:outline-none focus:ring-2 transition-all ${
+                            isDarkMode ? "bg-white/10 border border-white/20 text-white focus:ring-white/30" : "bg-gray-100 border border-gray-300 focus:ring-gray-300"
+                          }`}
+                        />
+                        <input
+                          type="number"
+                          required
+                          min="1"
+                          placeholder="min"
+                          value={newSession.duration}
+                          onChange={(e) => setNewSession({ ...newSession, duration: parseInt(e.target.value) || 0 })}
+                          className={`w-20 px-3 py-3 rounded-xl font-bold focus:outline-none focus:ring-2 transition-all ${
+                            isDarkMode ? "bg-white/10 border border-white/20 text-white focus:ring-white/30" : "bg-gray-100 border border-gray-300 focus:ring-gray-300"
+                          }`}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                        <Clock className="w-3 h-3" /> Time Range (24h format)
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          required
+                          placeholder="09:00"
+                          pattern="[0-9]{2}:[0-9]{2}"
+                          value={newSession.startTime}
+                          onChange={(e) => setNewSession({ ...newSession, startTime: e.target.value })}
+                          className={`w-full px-4 py-3 rounded-xl font-bold focus:outline-none focus:ring-2 transition-all ${
+                            isDarkMode ? "bg-white/10 border border-white/20 text-white focus:ring-white/30" : "bg-gray-100 border border-gray-300 focus:ring-gray-300"
+                          }`}
+                        />
+                        <input
+                          type="text"
+                          required
+                          placeholder="09:25"
+                          pattern="[0-9]{2}:[0-9]{2}"
+                          value={newSession.endTime}
+                          onChange={(e) => setNewSession({ ...newSession, endTime: e.target.value })}
+                          className={`w-full px-4 py-3 rounded-xl font-bold focus:outline-none focus:ring-2 transition-all ${
+                            isDarkMode ? "bg-white/10 border border-white/20 text-white focus:ring-white/30" : "bg-gray-100 border border-gray-300 focus:ring-gray-300"
+                          }`}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Start Time</label>
-                    <input
-                      type="time"
-                      required
-                      value={newSession.startTime}
-                      onChange={(e) => setNewSession({ ...newSession, startTime: e.target.value })}
-                      className={`w-full px-4 py-3 rounded-xl font-bold focus:outline-none focus:ring-2 transition-all ${
-                        isDarkMode ? "bg-white/5 focus:ring-white/20" : "bg-gray-100 focus:ring-gray-200"
-                      }`}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">End Time</label>
-                    <input
-                      type="time"
-                      required
-                      value={newSession.endTime}
-                      onChange={(e) => setNewSession({ ...newSession, endTime: e.target.value })}
-                      className={`w-full px-4 py-3 rounded-xl font-bold focus:outline-none focus:ring-2 transition-all ${
-                        isDarkMode ? "bg-white/5 focus:ring-white/20" : "bg-gray-100 focus:ring-gray-200"
-                      }`}
-                    />
-                  </div>
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    className="w-full py-4 bg-gray-950 text-white rounded-2xl font-bold hover:bg-black transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2 group"
+                  >
+                    <Check className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                    Save Session
+                  </button>
                 </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                    <Tag className="w-3 h-3" /> Main Task
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. ERP Project"
-                    value={newSession.mainTask}
-                    onChange={(e) => setNewSession({ ...newSession, mainTask: e.target.value })}
-                    className={`w-full px-4 py-3 rounded-xl font-bold focus:outline-none focus:ring-2 transition-all ${
-                      isDarkMode ? "bg-white/5 focus:ring-white/20" : "bg-gray-100 focus:ring-gray-200"
-                    }`}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                    <BookOpen className="w-3 h-3" /> Topic
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Finish Part 2"
-                    value={newSession.topic}
-                    onChange={(e) => setNewSession({ ...newSession, topic: e.target.value })}
-                    className={`w-full px-4 py-3 rounded-xl font-bold focus:outline-none focus:ring-2 transition-all ${
-                      isDarkMode ? "bg-white/5 focus:ring-white/20" : "bg-gray-100 focus:ring-gray-200"
-                    }`}
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-4 bg-gray-900 text-white rounded-2xl font-bold hover:bg-gray-800 transition-all shadow-lg active:scale-95 mt-4"
-                >
-                  Save Session
-                </button>
               </form>
             </motion.div>
           </div>

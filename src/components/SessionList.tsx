@@ -1,19 +1,39 @@
-import React from "react";
-import { Trash2, Calendar, Clock, Tag } from "lucide-react";
+import React, { useState } from "react";
+import { Trash2, Calendar, Clock, Tag, Edit2, Check, X } from "lucide-react";
 import { Session } from "../types";
 import { format, parseISO } from "date-fns";
 
 interface SessionListProps {
   sessions: Session[];
   onDelete: (id: string) => void;
+  onUpdate: (id: string, updates: Partial<Session>) => void;
   isDarkMode?: boolean;
 }
 
-export default function SessionList({ sessions, onDelete, isDarkMode }: SessionListProps) {
-  console.log("SessionList rendering with sessions:", sessions.length);
+export default function SessionList({ sessions, onDelete, onUpdate, isDarkMode }: SessionListProps) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<Partial<Session>>({});
+
   const sortedSessions = [...sessions].sort((a, b) => {
     return new Date(b.date + "T" + b.startTime).getTime() - new Date(a.date + "T" + a.startTime).getTime();
   });
+
+  const handleStartEdit = (session: Session) => {
+    setEditingId(session.id || null);
+    setEditValues({
+      mainTask: session.mainTask,
+      topic: session.topic,
+      duration: session.duration,
+      date: session.date,
+      startTime: session.startTime,
+      endTime: session.endTime
+    });
+  };
+
+  const handleSave = (id: string) => {
+    onUpdate(id, editValues);
+    setEditingId(null);
+  };
 
   return (
     <div className="w-full max-w-4xl mt-12">
@@ -31,31 +51,119 @@ export default function SessionList({ sessions, onDelete, isDarkMode }: SessionL
                 isDarkMode ? "bg-white/10 border-white/10 hover:shadow-white/5" : "bg-gray-50 border-gray-100 hover:shadow-md"
               }`}
             >
-              <div className="flex flex-wrap items-center gap-4 md:gap-8">
-                <div className={`flex items-center gap-2 ${isDarkMode ? "text-white/60" : "text-gray-600"}`}>
-                  <Calendar className="w-4 h-4 text-rose-500" />
-                  <span className="text-sm font-medium">{format(parseISO(session.date), "MMM d, yyyy")}</span>
-                </div>
-                <div className={`flex items-center gap-2 ${isDarkMode ? "text-white/60" : "text-gray-600"}`}>
-                  <Clock className="w-4 h-4 text-teal-500" />
-                  <span className="text-sm font-medium">
-                    {session.startTime} - {session.endTime} ({session.duration}m)
-                  </span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 text-rose-600 w-fit">
-                    <Tag className="w-3 h-3" />
-                    <span className="text-[10px] font-bold uppercase tracking-wider">{session.mainTask}</span>
+              <div className="flex flex-wrap items-center gap-4 md:gap-8 flex-1">
+                {editingId === session.id ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase text-gray-400">Task & Topic</label>
+                      <input 
+                        type="text" 
+                        value={editValues.mainTask} 
+                        onChange={e => setEditValues(prev => ({ ...prev, mainTask: e.target.value }))}
+                        className={`w-full px-3 py-1 rounded-lg border text-sm ${isDarkMode ? "bg-white/5 border-white/10 text-white" : "bg-white border-gray-200"}`}
+                      />
+                      <input 
+                        type="text" 
+                        value={editValues.topic} 
+                        onChange={e => setEditValues(prev => ({ ...prev, topic: e.target.value }))}
+                        className={`w-full px-3 py-1 rounded-lg border text-sm mt-1 ${isDarkMode ? "bg-white/5 border-white/10 text-white" : "bg-white border-gray-200"}`}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase text-gray-400">Date & Duration (m)</label>
+                      <div className="flex gap-2">
+                        <input 
+                          type="date" 
+                          value={editValues.date} 
+                          onChange={e => setEditValues(prev => ({ ...prev, date: e.target.value }))}
+                          className={`flex-1 px-3 py-1 rounded-lg border text-sm ${isDarkMode ? "bg-white/5 border-white/10 text-white" : "bg-white border-gray-200"}`}
+                        />
+                        <input 
+                          type="number" 
+                          value={editValues.duration} 
+                          onChange={e => setEditValues(prev => ({ ...prev, duration: parseInt(e.target.value) || 0 }))}
+                          className={`w-20 px-3 py-1 rounded-lg border text-sm ${isDarkMode ? "bg-white/5 border-white/10 text-white" : "bg-white border-gray-200"}`}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mt-1">
+                        <input 
+                          type="text" 
+                          placeholder="HH:mm"
+                          pattern="[0-9]{2}:[0-9]{2}"
+                          value={editValues.startTime} 
+                          onChange={e => setEditValues(prev => ({ ...prev, startTime: e.target.value }))}
+                          className={`w-full px-3 py-1 rounded-lg border text-sm ${isDarkMode ? "bg-white/10 border-white/20 text-white" : "bg-white border-gray-300"}`}
+                        />
+                        <input 
+                          type="text" 
+                          placeholder="HH:mm"
+                          pattern="[0-9]{2}:[0-9]{2}"
+                          value={editValues.endTime} 
+                          onChange={e => setEditValues(prev => ({ ...prev, endTime: e.target.value }))}
+                          className={`w-full px-3 py-1 rounded-lg border text-sm ${isDarkMode ? "bg-white/10 border-white/20 text-white" : "bg-white border-gray-300"}`}
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <span className={`text-sm font-bold ml-1 ${isDarkMode ? "text-white" : "text-gray-800"}`}>{session.topic}</span>
-                </div>
+                ) : (
+                  <>
+                    <div className={`flex items-center gap-2 ${isDarkMode ? "text-white/60" : "text-gray-600"}`}>
+                      <Calendar className="w-4 h-4 text-rose-500" />
+                      <span className="text-sm font-medium">{format(parseISO(session.date), "MMM d, yyyy")}</span>
+                    </div>
+                    <div className={`flex items-center gap-2 ${isDarkMode ? "text-white/60" : "text-gray-600"}`}>
+                      <Clock className="w-4 h-4 text-teal-500" />
+                      <span className="text-sm font-medium">
+                        {session.startTime} - {session.endTime} ({session.duration}m)
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 text-rose-600 w-fit">
+                        <Tag className="w-3 h-3" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider">{session.mainTask}</span>
+                      </div>
+                      <span className={`text-sm font-bold ml-1 ${isDarkMode ? "text-white" : "text-gray-800"}`}>{session.topic}</span>
+                    </div>
+                  </>
+                )}
               </div>
-              <button
-                onClick={() => session.id && onDelete(session.id)}
-                className="p-2 text-gray-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors ml-auto md:ml-0"
-              >
-                <Trash2 className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2 ml-auto">
+                {editingId === session.id ? (
+                  <>
+                    <button
+                      onClick={() => handleSave(session.id!)}
+                      className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors"
+                      title="Save"
+                    >
+                      <Check className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={() => setEditingId(null)}
+                      className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg transition-colors"
+                      title="Cancel"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => handleStartEdit(session)}
+                      className="p-2 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg transition-colors"
+                      title="Edit"
+                    >
+                      <Edit2 className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={() => session.id && onDelete(session.id)}
+                      className="p-2 text-gray-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           ))
         )}

@@ -27,7 +27,8 @@ import {
   handleFirestoreError,
   OperationType,
   setDoc,
-  getDoc
+  getDoc,
+  updateDoc
 } from "./lib/firebase";
 import { User as FirebaseUser } from "firebase/auth";
 
@@ -345,6 +346,20 @@ export default function App() {
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, path);
       setError("Failed to delete session.");
+    }
+  };
+
+  const handleUpdateSession = async (id: string, updates: Partial<Session>) => {
+    const path = `sessions/${id}`;
+    try {
+      await updateDoc(doc(db, "sessions", id), {
+        ...updates,
+        updatedAt: serverTimestamp()
+      });
+      setLastSyncStatus("success");
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, path);
+      setError("Failed to update session.");
     }
   };
 
@@ -677,7 +692,12 @@ export default function App() {
                 isDarkMode={isDarkMode} 
               />
 
-              <SessionList sessions={sessions} onDelete={handleDeleteSession} isDarkMode={isDarkMode} />
+              <SessionList 
+                sessions={sessions} 
+                onDelete={handleDeleteSession}
+                onUpdate={handleUpdateSession}
+                isDarkMode={isDarkMode} 
+              />
             </motion.div>
           )}
 
