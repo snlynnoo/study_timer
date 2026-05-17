@@ -89,7 +89,7 @@ export default function HistoryActions({ sessions, onInsert, isDarkMode }: Histo
   };
 
   return (
-    <div className="w-full max-w-4xl flex gap-4 px-4 mb-6">
+    <div className="w-full max-w-4xl flex gap-4 px-4 mb-2">
       <button
         onClick={() => setIsInsertOpen(true)}
         className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl font-bold transition-all shadow-lg active:scale-95 ${

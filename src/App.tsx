@@ -677,7 +677,7 @@ export default function App() {
               exit={{ opacity: 0, x: -20 }}
               className="w-full flex flex-col items-center"
             >
-              <div className="w-full max-w-2xl mb-6 flex items-center justify-between px-4">
+              <div className="w-full max-w-2xl mb-2 flex items-center justify-between px-4">
                 <div className="flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${isSyncing ? "bg-amber-400 animate-pulse" : lastSyncStatus === "error" ? "bg-rose-500" : "bg-emerald-500"}`} />
                   <span className="text-white/60 text-xs font-medium">
@@ -724,9 +724,14 @@ export default function App() {
             <p className="text-white/60 text-sm font-medium tracking-wide">
               Made with <span className="text-rose-400 animate-pulse">♥️</span> by <span className="text-white font-bold">Sai</span>, Enjoy!
             </p>
-            <p className="text-white/30 text-[10px] font-bold uppercase tracking-[0.2em]">
-              Productivity • Focus • Discipline
-            </p>
+            <div className="flex flex-col items-center gap-1">
+              <p className="text-white/30 text-[10px] font-bold uppercase tracking-[0.2em]">
+                Productivity • Focus • Discipline
+              </p>
+              <p className="text-white/20 text-[9px] font-bold tracking-widest">
+                VERSION 1.2.0
+              </p>
+            </div>
           </motion.div>
         </footer>
       </main>

@@ -36,9 +36,9 @@ export default function SessionList({ sessions, onDelete, onUpdate, isDarkMode }
   };
 
   return (
-    <div className="w-full max-w-4xl mt-12">
-      <h3 className={`text-xl font-bold mb-6 px-4 ${isDarkMode ? "text-white" : "text-gray-800"}`}>Recent Sessions</h3>
-      <div className="space-y-4">
+    <div className="w-full max-w-4xl mt-2">
+      <h3 className={`text-xl font-bold mb-2 px-4 ${isDarkMode ? "text-emerald-400" : "text-emerald-600"}`}>Recent Sessions</h3>
+      <div className="space-y-2">
         {sortedSessions.length === 0 ? (
           <div className={`text-center py-12 rounded-3xl border-2 border-dashed text-gray-400 ${isDarkMode ? "bg-white/5 border-white/10" : "bg-gray-50 border-gray-200"}`}>
             No sessions recorded yet.
@@ -47,7 +47,7 @@ export default function SessionList({ sessions, onDelete, onUpdate, isDarkMode }
           sortedSessions.map((session) => (
             <div
               key={session.id}
-              className={`flex flex-col md:flex-row items-start md:items-center justify-between p-6 rounded-2xl shadow-sm border transition-shadow gap-4 ${
+              className={`flex flex-col md:flex-row items-start md:items-center justify-between p-3 rounded-2xl shadow-sm border transition-shadow gap-4 ${
                 isDarkMode ? "bg-white/10 border-white/10 hover:shadow-white/5" : "bg-gray-50 border-gray-100 hover:shadow-md"
               }`}
             >

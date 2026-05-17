@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from "react";
 import {
-  BarChart,
+  ComposedChart,
   Bar,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -26,17 +27,19 @@ import {
   isSameDay,
   isSameWeek,
   isSameMonth,
-  isSameYear
+  isSameYear,
+  isWithinInterval,
+  startOfToday
 } from "date-fns";
 import { Session } from "../types";
-import { LayoutGrid, Calendar, Clock, BookOpen } from "lucide-react";
+import { LayoutGrid, Calendar, Clock, BookOpen, ChevronDown } from "lucide-react";
 
 interface DashboardProps {
   sessions: Session[];
   isDarkMode?: boolean;
 }
 
-type TimeRange = "daily" | "weekly" | "monthly" | "yearly";
+type TimeRange = "daily" | "weekly" | "monthly" | "yearly" | "custom";
 type PieChartMode = "mainTask" | "topic";
 
 interface SummaryItem {
@@ -47,6 +50,8 @@ interface SummaryItem {
 
 export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
   const [timeRange, setTimeRange] = useState<TimeRange>("daily");
+  const [customStartDate, setCustomStartDate] = useState<string>(format(subDays(new Date(), 30), "yyyy-MM-dd"));
+  const [customEndDate, setCustomEndDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
   const [pieChartMode, setPieChartMode] = useState<PieChartMode>("topic");
   const [selectedBar, setSelectedBar] = useState<string | null>(null);
 
@@ -59,19 +64,37 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
 
   // Filter sessions based on time range selector (Daily/Monthly/Yearly)
   const now = new Date();
+  
+  const parsedCustomStart = useMemo(() => {
+    const d = parseISO(customStartDate);
+    return isNaN(d.getTime()) ? subDays(now, 30) : d;
+  }, [customStartDate, now]);
+
+  const parsedCustomEnd = useMemo(() => {
+    const d = parseISO(customEndDate);
+    return isNaN(d.getTime()) ? now : d;
+  }, [customEndDate, now]);
+
   const baseFilteredSessions = sessions.filter(s => {
     const sessionDate = parseISO(s.date);
+    if (isNaN(sessionDate.getTime())) return false;
+
     if (timeRange === "daily") {
-      // For "daily" view, we actually show last 7 days in chart, 
-      // but "filteredSessions" usually implies current choice.
-      // However, the user said "When it's in Daily, it should show daily topics only".
-      // This is a bit ambiguous if they mean "today" or "the day selected in chart".
-      // I'll default to "today" unless a bar is clicked.
       return isSameDay(sessionDate, now);
     }
-    if (timeRange === "weekly") return isSameWeek(sessionDate, now);
+    if (timeRange === "weekly") return isSameWeek(sessionDate, now, { weekStartsOn: 1 });
     if (timeRange === "monthly") return isSameMonth(sessionDate, now);
     if (timeRange === "yearly") return isSameYear(sessionDate, now);
+    if (timeRange === "custom") {
+      try {
+        const start = startOfDay(parsedCustomStart);
+        const end = endOfDay(parsedCustomEnd);
+        if (start > end) return false;
+        return isWithinInterval(sessionDate, { start, end });
+      } catch (e) {
+        return false;
+      }
+    }
     return true;
   });
 
@@ -94,9 +117,9 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
       };
     });
   } else if (timeRange === "weekly") {
+    const weekStart = subDays(now, now.getDay() === 0 ? 6 : now.getDay() - 1);
     const weekDays = eachDayOfInterval({
-      // Start of week (Monday)
-      start: subDays(now, now.getDay() === 0 ? 6 : now.getDay() - 1), 
+      start: weekStart,
       end: now,
     });
     chartData = weekDays.map((date) => {
@@ -109,6 +132,31 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
         rawDate: date,
       };
     });
+  } else if (timeRange === "custom") {
+    try {
+      const start = parsedCustomStart;
+      const end = parsedCustomEnd;
+      // Ensure start is not after end
+      const actualStart = start <= end ? start : end;
+      const actualEnd = start <= end ? end : start;
+
+      const intervalDays = eachDayOfInterval({
+        start: actualStart,
+        end: actualEnd,
+      });
+      chartData = intervalDays.map((date) => {
+        const dateStr = format(date, "yyyy-MM-dd");
+        const daySessions = sessions.filter((s) => s.date === dateStr);
+        const totalMinutes = daySessions.reduce((acc, s) => acc + s.duration, 0);
+        return {
+          name: format(date, intervalDays.length > 20 ? "dd/MM" : "d MMM"),
+          hours: parseFloat((totalMinutes / 60).toFixed(2)),
+          rawDate: date,
+        };
+      });
+    } catch (e) {
+      chartData = [];
+    }
   } else if (timeRange === "monthly") {
     const monthDays = eachDayOfInterval({
       start: startOfMonth(now),
@@ -152,7 +200,7 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
     const target = correspondingItem.rawDate;
     return sessions.filter(s => {
       const d = parseISO(s.date);
-      if (timeRange === "daily" || timeRange === "weekly" || timeRange === "monthly") {
+      if (timeRange === "daily" || timeRange === "weekly" || timeRange === "monthly" || timeRange === "custom") {
         return isSameDay(d, target);
       } else {
         return isSameMonth(d, target);
@@ -207,7 +255,11 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
 
   const currentSelectionLabel = selectedBar 
     ? (timeRange === "yearly" ? `Month: ${selectedBar}` : `Day: ${selectedBar}`)
-    : (timeRange === "daily" ? "Today" : timeRange === "weekly" ? "This Week" : timeRange === "monthly" ? "This Month" : "This Year");
+    : (timeRange === "daily" ? "Today" : 
+       timeRange === "weekly" ? "This Week" : 
+       timeRange === "monthly" ? "This Month" : 
+       timeRange === "yearly" ? "This Year" :
+       `${format(parsedCustomStart, "MMM d")} - ${format(parsedCustomEnd, "MMM d")}`);
 
   const renderCustomizedPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, name }: any) => {
     const RADIAN = Math.PI / 180;
@@ -244,37 +296,60 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
   return (
     <div className="w-full max-w-6xl mt-12 space-y-8">
       {/* Time Range Selector */}
-      <div className="flex flex-col items-center gap-4">
-        <div className="bg-white/10 backdrop-blur p-1 rounded-2xl border border-white/20 flex gap-0.5 sm:gap-1">
-          {(["daily", "weekly", "monthly", "yearly"] as TimeRange[]).map((range) => (
-            <button
-              key={range}
-              onClick={() => {
-                setTimeRange(range);
-                setSelectedBar(null);
-              }}
-              className={`px-3 sm:px-6 py-2 rounded-xl text-xs sm:text-sm font-bold capitalize transition-all shrink-0 ${
-                timeRange === range
-                  ? "bg-white text-gray-900 shadow-lg"
-                  : "text-white hover:bg-white/10"
-              }`}
-            >
-              {range}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          <p className="text-white/60 text-xs font-medium bg-white/5 px-4 py-1.5 rounded-full border border-white/10">
-            Showing stats for: <span className="text-white font-bold">{currentSelectionLabel}</span>
-          </p>
-          {selectedBar && (
-            <button 
-              onClick={() => setSelectedBar(null)} 
-              className="text-xs font-bold text-rose-400 hover:text-rose-300 bg-rose-500/10 px-3 py-1.5 rounded-full border border-rose-500/20 transition-all flex items-center gap-1"
-            >
-              Reset Filter
-            </button>
-          )}
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="bg-white/10 backdrop-blur p-1 rounded-2xl border border-white/20 flex gap-0.5 sm:gap-1">
+              {(["daily", "weekly", "monthly", "yearly", "custom"] as TimeRange[]).map((range) => (
+                <button
+                  key={range}
+                  onClick={() => {
+                    setTimeRange(range);
+                    setSelectedBar(null);
+                  }}
+                  className={`px-3 sm:px-6 py-2 rounded-xl text-xs sm:text-sm font-bold capitalize transition-all shrink-0 ${
+                    timeRange === range
+                      ? "bg-white text-gray-900 shadow-lg"
+                      : "text-white hover:bg-white/10"
+                  }`}
+                >
+                  {range}
+                </button>
+              ))}
+            </div>
+
+            {timeRange === "custom" && (
+              <div className="flex items-center gap-2 bg-white/5 p-1 rounded-xl border border-white/10">
+                <input 
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="bg-transparent text-white text-[10px] font-bold outline-none px-2 py-1"
+                />
+                <span className="text-white/40 text-[10px]">to</span>
+                <input 
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="bg-transparent text-white text-[10px] font-bold outline-none px-2 py-1"
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 ml-auto">
+            <p className="text-white/60 text-[10px] uppercase tracking-widest font-bold bg-white/5 px-4 py-2 rounded-full border border-white/10">
+              Showing stats for: <span className="text-white">{currentSelectionLabel}</span>
+            </p>
+            {selectedBar && (
+              <button 
+                onClick={() => setSelectedBar(null)} 
+                className="text-[10px] uppercase tracking-widest font-bold text-rose-400 hover:text-rose-300 bg-rose-500/10 px-3 py-2 rounded-full border border-rose-500/20 transition-all flex items-center gap-1"
+              >
+                Reset Filter
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -297,7 +372,7 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
           </div>
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} onClick={handleChartClick}>
+              <ComposedChart data={chartData} onClick={handleChartClick}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? "rgba(255,255,255,0.05)" : "#f1f5f9"} />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: isDarkMode ? "rgba(255,255,255,0.4)" : "#64748b", fontSize: 12 }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: isDarkMode ? "rgba(255,255,255,0.4)" : "#64748b", fontSize: 12 }} />
@@ -324,7 +399,15 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
                     />
                   ))}
                 </Bar>
-              </BarChart>
+                <Line 
+                  type="monotone" 
+                  dataKey="hours" 
+                  stroke="#14b8a6" 
+                  strokeWidth={2} 
+                  dot={{ r: 2, fill: "#14b8a6" }} 
+                  activeDot={{ r: 4 }}
+                />
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
           <p className="text-[10px] text-gray-500 mt-4 text-center">Click on a bar to filter summary & distribution below</p>
@@ -365,7 +448,7 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
               </button>
             </div>
           </div>
-          <div className="h-96 w-full mt-4">
+          <div className="h-64 w-full mt-4">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -412,17 +495,17 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
             <table className="w-full text-left">
               <thead>
                 <tr className={`border-b ${isDarkMode ? "border-white/10" : "border-gray-100"}`}>
-                  <th className="pb-4 font-bold text-gray-400 text-xs uppercase tracking-widest">Main Task</th>
-                  <th className="pb-4 font-bold text-gray-400 text-xs uppercase tracking-widest">Topic</th>
-                  <th className="pb-4 font-bold text-gray-400 text-xs uppercase tracking-widest text-right">Total Time</th>
+                  <th className="pb-2 font-bold text-gray-400 text-xs uppercase tracking-widest">Main Task</th>
+                  <th className="pb-2 font-bold text-gray-400 text-xs uppercase tracking-widest">Topic</th>
+                  <th className="pb-2 font-bold text-gray-400 text-xs uppercase tracking-widest text-right">Total Time</th>
                 </tr>
               </thead>
               <tbody className={`divide-y ${isDarkMode ? "divide-white/5" : "divide-gray-50"}`}>
                 {summaryData.map((item, idx) => (
                   <tr key={idx} className={`group transition-colors ${isDarkMode ? "hover:bg-white/5" : "hover:bg-gray-50"}`}>
-                    <td className={`py-4 font-bold ${isDarkMode ? "text-white" : "text-gray-800"}`}>{item.mainTask}</td>
-                    <td className={`py-4 ${isDarkMode ? "text-white/60" : "text-gray-600"}`}>{item.topic}</td>
-                    <td className="py-4 text-right font-mono font-bold text-rose-500">
+                    <td className={`py-2 font-bold ${isDarkMode ? "text-white" : "text-gray-800"}`}>{item.mainTask}</td>
+                    <td className={`py-2 ${isDarkMode ? "text-white/60" : "text-gray-600"}`}>{item.topic}</td>
+                    <td className="py-2 text-right font-mono font-bold text-rose-500">
                       {formatDuration(item.duration)}
                     </td>
                   </tr>
