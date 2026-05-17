@@ -30,6 +30,32 @@ export default function HistoryActions({ sessions, onInsert, isDarkMode }: Histo
     to: format(new Date(), "yyyy-MM-dd")
   });
 
+  const calculateDuration = (start: string, end: string) => {
+    try {
+      const startParts = start.split(":").map(Number);
+      const endParts = end.split(":").map(Number);
+      if (startParts.length !== 2 || endParts.length !== 2) return 0;
+      
+      let startTotal = startParts[0] * 60 + startParts[1];
+      let endTotal = endParts[0] * 60 + endParts[1];
+      
+      if (endTotal < startTotal) endTotal += 1440; // 24 hours
+      return endTotal - startTotal;
+    } catch (e) {
+      return 0;
+    }
+  };
+
+  const updateStartTime = (val: string) => {
+    const duration = calculateDuration(val, newSession.endTime);
+    setNewSession({ ...newSession, startTime: val, duration });
+  };
+
+  const updateEndTime = (val: string) => {
+    const duration = calculateDuration(newSession.startTime, val);
+    setNewSession({ ...newSession, endTime: val, duration });
+  };
+
   const handleInsert = async (e: React.FormEvent) => {
     e.preventDefault();
     const success = await onInsert(newSession);
@@ -190,13 +216,11 @@ export default function HistoryActions({ sessions, onInsert, isDarkMode }: Histo
                         />
                         <input
                           type="number"
-                          required
-                          min="1"
+                          readOnly
                           placeholder="min"
                           value={newSession.duration}
-                          onChange={(e) => setNewSession({ ...newSession, duration: parseInt(e.target.value) || 0 })}
-                          className={`w-20 px-3 py-3 rounded-xl font-bold focus:outline-none focus:ring-2 transition-all ${
-                            isDarkMode ? "bg-white/10 border border-white/20 text-white focus:ring-white/30" : "bg-gray-100 border border-gray-300 focus:ring-gray-300"
+                          className={`w-20 px-3 py-3 rounded-xl font-bold focus:outline-none transition-all cursor-not-allowed ${
+                            isDarkMode ? "bg-white/5 border border-white/10 text-white/50" : "bg-gray-50 border border-gray-200 text-gray-400"
                           }`}
                         />
                       </div>
@@ -213,7 +237,7 @@ export default function HistoryActions({ sessions, onInsert, isDarkMode }: Histo
                           placeholder="09:00"
                           pattern="[0-9]{2}:[0-9]{2}"
                           value={newSession.startTime}
-                          onChange={(e) => setNewSession({ ...newSession, startTime: e.target.value })}
+                          onChange={(e) => updateStartTime(e.target.value)}
                           className={`w-full px-4 py-3 rounded-xl font-bold focus:outline-none focus:ring-2 transition-all ${
                             isDarkMode ? "bg-white/10 border border-white/20 text-white focus:ring-white/30" : "bg-gray-100 border border-gray-300 focus:ring-gray-300"
                           }`}
@@ -224,7 +248,7 @@ export default function HistoryActions({ sessions, onInsert, isDarkMode }: Histo
                           placeholder="09:25"
                           pattern="[0-9]{2}:[0-9]{2}"
                           value={newSession.endTime}
-                          onChange={(e) => setNewSession({ ...newSession, endTime: e.target.value })}
+                          onChange={(e) => updateEndTime(e.target.value)}
                           className={`w-full px-4 py-3 rounded-xl font-bold focus:outline-none focus:ring-2 transition-all ${
                             isDarkMode ? "bg-white/10 border border-white/20 text-white focus:ring-white/30" : "bg-gray-100 border border-gray-300 focus:ring-gray-300"
                           }`}

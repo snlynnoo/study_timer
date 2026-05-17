@@ -37,7 +37,7 @@ export default function PomodoroInfo() {
   ];
 
   return (
-    <div className="w-full max-w-4xl mt-12 px-4 space-y-12 pb-20">
+    <div className="w-full max-w-4xl mt-4 px-4 space-y-12 pb-20">
       <header className="text-center space-y-4">
         <motion.div
           initial={{ scale: 0.9, opacity: 0 }}

@@ -30,9 +30,35 @@ export default function SessionList({ sessions, onDelete, onUpdate, isDarkMode }
     });
   };
 
+  const calculateDuration = (start: string, end: string) => {
+    try {
+      const startParts = start.split(":").map(Number);
+      const endParts = end.split(":").map(Number);
+      if (startParts.length !== 2 || endParts.length !== 2) return 0;
+      
+      let startTotal = startParts[0] * 60 + startParts[1];
+      let endTotal = endParts[0] * 60 + endParts[1];
+      
+      if (endTotal < startTotal) endTotal += 1440; // 24 hours
+      return endTotal - startTotal;
+    } catch (e) {
+      return 0;
+    }
+  };
+
   const handleSave = (id: string) => {
     onUpdate(id, editValues);
     setEditingId(null);
+  };
+
+  const updateEditStartTime = (val: string) => {
+    const duration = calculateDuration(val, editValues.endTime || "");
+    setEditValues(prev => ({ ...prev, startTime: val, duration }));
+  };
+
+  const updateEditEndTime = (val: string) => {
+    const duration = calculateDuration(editValues.startTime || "", val);
+    setEditValues(prev => ({ ...prev, endTime: val, duration }));
   };
 
   return (
@@ -80,9 +106,9 @@ export default function SessionList({ sessions, onDelete, onUpdate, isDarkMode }
                         />
                         <input 
                           type="number" 
+                          readOnly
                           value={editValues.duration} 
-                          onChange={e => setEditValues(prev => ({ ...prev, duration: parseInt(e.target.value) || 0 }))}
-                          className={`w-20 px-3 py-1 rounded-lg border text-sm ${isDarkMode ? "bg-white/5 border-white/10 text-white" : "bg-white border-gray-200"}`}
+                          className={`w-20 px-3 py-1 rounded-lg border text-sm cursor-not-allowed ${isDarkMode ? "bg-white/5 border-white/10 text-white/50" : "bg-gray-50 border-gray-200 text-gray-400"}`}
                         />
                       </div>
                       <div className="grid grid-cols-2 gap-2 mt-1">
@@ -91,7 +117,7 @@ export default function SessionList({ sessions, onDelete, onUpdate, isDarkMode }
                           placeholder="HH:mm"
                           pattern="[0-9]{2}:[0-9]{2}"
                           value={editValues.startTime} 
-                          onChange={e => setEditValues(prev => ({ ...prev, startTime: e.target.value }))}
+                          onChange={e => updateEditStartTime(e.target.value)}
                           className={`w-full px-3 py-1 rounded-lg border text-sm ${isDarkMode ? "bg-white/10 border-white/20 text-white" : "bg-white border-gray-300"}`}
                         />
                         <input 
@@ -99,7 +125,7 @@ export default function SessionList({ sessions, onDelete, onUpdate, isDarkMode }
                           placeholder="HH:mm"
                           pattern="[0-9]{2}:[0-9]{2}"
                           value={editValues.endTime} 
-                          onChange={e => setEditValues(prev => ({ ...prev, endTime: e.target.value }))}
+                          onChange={e => updateEditEndTime(e.target.value)}
                           className={`w-full px-3 py-1 rounded-lg border text-sm ${isDarkMode ? "bg-white/10 border-white/20 text-white" : "bg-white border-gray-300"}`}
                         />
                       </div>

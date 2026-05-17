@@ -294,7 +294,7 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
   };
 
   return (
-    <div className="w-full max-w-6xl mt-12 space-y-8">
+    <div className="w-full max-w-6xl mt-6 space-y-8">
       {/* Time Range Selector */}
       <div className="flex flex-col gap-6">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
