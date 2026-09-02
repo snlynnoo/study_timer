@@ -52,7 +52,6 @@ export default function SettingsModal({
   isSyncing,
   isDarkMode,
 }: SettingsModalProps) {
-  console.log("SettingsModal rendering, isOpen:", isOpen);
   if (!isOpen) return null;
 
   const handleDurationChange = (key: keyof TimerSettings, value: string) => {

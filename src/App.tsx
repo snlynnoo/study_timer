@@ -7,37 +7,22 @@ import SessionList from "./components/SessionList";
 import PomodoroInfo from "./components/PomodoroInfo";
 import HistoryActions from "./components/HistoryActions";
 import SettingsModal from "./components/SettingsModal";
-import { Settings as SettingsIcon, LayoutDashboard, Timer as TimerIcon, List, AlertCircle, LogIn, LogOut, User, Info, Share2, Check } from "lucide-react";
+import AuthView from "./components/AuthView";
+import { Settings as SettingsIcon, LayoutDashboard, Timer as TimerIcon, List, AlertCircle, LogOut, User as UserIcon, Info, Share2, Check } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { 
-  auth, 
-  db, 
-  loginWithGoogle, 
-  logout, 
-  onAuthStateChanged, 
-  collection, 
-  addDoc, 
-  deleteDoc, 
-  doc, 
-  onSnapshot, 
-  query, 
-  where, 
-  orderBy, 
-  serverTimestamp,
-  handleFirestoreError,
-  OperationType,
-  setDoc,
-  getDoc,
-  updateDoc
-} from "./lib/firebase";
-import { User as FirebaseUser } from "firebase/auth";
+import { supabase } from "./lib/supabase";
+import { User as SupabaseUser } from "@supabase/supabase-js";
 
 export default function App() {
-  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [user, setUser] = useState<SupabaseUser | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [mode, setMode] = useState<TimerMode>("work");
-  const [mainTask, setMainTask] = useState("Study");
-  const [topic, setTopic] = useState("General");
+  const [mainTask, setMainTask] = useState<string>(() => {
+    return localStorage.getItem("pomo_last_main_task") || "";
+  });
+  const [topic, setTopic] = useState<string>(() => {
+    return localStorage.getItem("pomo_last_topic") || "";
+  });
   const [isActive, setIsActive] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [view, setView] = useState<"timer" | "dashboard" | "list" | "info">("timer");
@@ -49,7 +34,6 @@ export default function App() {
   const [lastSyncStatus, setLastSyncStatus] = useState<"success" | "error" | null>(null);
   const [isInitialSyncDone, setIsInitialSyncDone] = useState(false);
   const [isSettingsSyncing, setIsSettingsSyncing] = useState(false);
-  const lastLocalChangeRef = useRef<number>(0);
   const [showShareTooltip, setShowShareTooltip] = useState(false);
 
   const [settings, setSettings] = useState<TimerSettings>(() => {
@@ -73,7 +57,6 @@ export default function App() {
     const saved = localStorage.getItem("pomo_sound");
     if (saved) {
       const parsed = JSON.parse(saved);
-      // Migrate broken Mixkit URLs
       if (parsed.type === "https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3") {
         parsed.type = "https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3";
       } else if (parsed.type === "https://assets.mixkit.co/active_storage/sfx/2572/2572-preview.mp3") {
@@ -89,140 +72,229 @@ export default function App() {
     };
   });
 
+  const lastLocalChangeRef = useRef<number>(0);
+
+  // Initialize Supabase Auth state & handle popup callback message
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      if (!currentUser) {
+    // Check if we are inside a popup callback with hash params
+    if (window.opener && window.location.hash) {
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+      if (accessToken && refreshToken) {
+        try {
+          window.opener.postMessage(
+            {
+              type: "SUPABASE_AUTH_SESSION",
+              session: {
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              },
+            },
+            "*"
+          );
+        } catch {
+          // ignore
+        }
+        setTimeout(() => {
+          try {
+            window.close();
+          } catch {
+            // ignore
+          }
+        }, 300);
+      }
+    }
+
+    // Global listener for session messages from popup window
+    const handlePopupMessage = async (event: MessageEvent) => {
+      if (event.data?.type === "SUPABASE_AUTH_SESSION" && event.data?.session?.access_token) {
+        try {
+          const { data } = await supabase.auth.setSession({
+            access_token: event.data.session.access_token,
+            refresh_token: event.data.session.refresh_token,
+          });
+          if (data.session?.user) {
+            setUser(data.session.user);
+            setIsAuthReady(true);
+            setIsLoading(false);
+          }
+        } catch (e) {
+          console.error("Error setting session from popup:", e);
+        }
+      }
+    };
+    window.addEventListener("message", handlePopupMessage);
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setIsAuthReady(true);
+      setIsLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (!session?.user) {
         setIsInitialSyncDone(false);
+        setSessions([]);
+      } else if (window.opener) {
+        // If inside popup window, send session tokens to opener
+        try {
+          window.opener.postMessage(
+            {
+              type: "SUPABASE_AUTH_SESSION",
+              session: {
+                access_token: session.access_token,
+                refresh_token: session.refresh_token,
+              },
+            },
+            "*"
+          );
+        } catch {
+          // ignore
+        }
+        setTimeout(() => {
+          try {
+            window.close();
+          } catch {
+            // ignore
+          }
+        }, 400);
       }
       setIsAuthReady(true);
       setIsLoading(false);
     });
-    return () => unsubscribe();
+
+    return () => {
+      window.removeEventListener("message", handlePopupMessage);
+      subscription.unsubscribe();
+    };
   }, []);
 
+  const fetchSessions = async (userId: string, retries = 2) => {
+    try {
+      const { data, error } = await supabase
+        .from("sessions")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        if ((error.code === "PGRST303" || error.message?.includes("future")) && retries > 0) {
+          setTimeout(() => fetchSessions(userId, retries - 1), 1500);
+          return;
+        }
+        throw error;
+      }
+
+      const mapped: Session[] = (data || []).map((row: any) => ({
+        id: row.id,
+        userId: row.user_id,
+        date: row.date,
+        startTime: row.start_time || row.startTime || "",
+        endTime: row.end_time || row.endTime || "",
+        duration: Number(row.duration) || 0,
+        mainTask: row.main_task || row.mainTask || "General",
+        topic: row.topic || "General",
+        createdAt: row.created_at,
+      }));
+      setSessions(mapped);
+    } catch (err: any) {
+      console.error("Error fetching sessions from Supabase:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fetch and subscribe to sessions
   useEffect(() => {
     if (!user) {
       setSessions([]);
       return;
     }
 
-    const path = "sessions";
-    const q = query(
-      collection(db, path),
-      where("userId", "==", user.uid),
-      orderBy("createdAt", "desc")
-    );
+    fetchSessions(user.id);
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const sessionData: Session[] = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Session));
-      setSessions(sessionData);
-      setIsLoading(false);
-    }, (err) => {
-      handleFirestoreError(err, OperationType.GET, path);
-      setError("Failed to sync sessions. Check your connection.");
-      setIsLoading(false);
-    });
+    const channel = supabase
+      .channel(`public:sessions:${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "sessions", filter: `user_id=eq.${user.id}` },
+        () => {
+          fetchSessions(user.id);
+        }
+      )
+      .subscribe();
 
-    return () => unsubscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
-  // Sync settings from Firestore
+  // Sync settings from Supabase
   useEffect(() => {
     if (!user) {
       setIsInitialSyncDone(false);
       return;
     }
 
-    const path = `settings/${user.uid}`;
-    const unsubscribe = onSnapshot(doc(db, "settings", user.uid), (snapshot) => {
-      // 1. Ignore local echoes (latency compensation)
-      if (snapshot.metadata.hasPendingWrites) return;
+    const fetchSettings = async (retries = 2) => {
+      try {
+        const { data, error } = await supabase
+          .from("user_settings")
+          .select("*")
+          .eq("user_id", user.id)
+          .maybeSingle();
 
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        
-        // 2. Ignore server updates if we've made a local change very recently (10s window)
-        const now = Date.now();
-        if (now - lastLocalChangeRef.current < 10000) {
-          console.log("Ignoring server sync: recent local change detected");
-          setIsInitialSyncDone(true);
-          return;
+        if (error) {
+          if ((error.code === "PGRST303" || error.message?.includes("future")) && retries > 0) {
+            setTimeout(() => fetchSettings(retries - 1), 1500);
+            return;
+          }
+          if (error.code !== "PGRST116") {
+            console.error("Error fetching settings:", error);
+          }
         }
 
-        // 3. Robust comparison and update
-        if (data.timer) {
-          setSettings(prev => {
-            const newTimer = { ...data.timer };
-            if (newTimer.darkModeWhenRunning === undefined) newTimer.darkModeWhenRunning = false;
-            
-            // Sort keys to ensure stable stringification
-            const sortedNew = Object.keys(newTimer).sort().reduce((acc: any, key) => {
-              acc[key] = (newTimer as any)[key];
-              return acc;
-            }, {});
-            const sortedPrev = Object.keys(prev).sort().reduce((acc: any, key) => {
-              acc[key] = (prev as any)[key];
-              return acc;
-            }, {});
-
-            if (JSON.stringify(sortedNew) !== JSON.stringify(sortedPrev)) {
-              console.log("Settings updated from Firestore:", sortedNew);
-              return sortedNew;
-            }
-            return prev;
-          });
+        if (data) {
+          if (data.timer) {
+            setSettings((prev) => {
+              const newTimer = { ...data.timer };
+              if (newTimer.darkModeWhenRunning === undefined) newTimer.darkModeWhenRunning = false;
+              return newTimer;
+            });
+          }
+          if (data.theme) setTheme(data.theme);
+          if (data.sound) setSound(data.sound);
         }
-        
-        if (data.theme) {
-          setTheme(prev => {
-            if (JSON.stringify(data.theme) !== JSON.stringify(prev)) return data.theme;
-            return prev;
-          });
-        }
-        
-        if (data.sound) {
-          setSound(prev => {
-            // Migrate broken Mixkit URLs
-            if (data.sound.type === "https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3") {
-              data.sound.type = "https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3";
-            } else if (data.sound.type === "https://assets.mixkit.co/active_storage/sfx/2572/2572-preview.mp3") {
-              data.sound.type = "https://assets.mixkit.co/active_storage/sfx/951/951-preview.mp3";
-            }
-            if (JSON.stringify(data.sound) !== JSON.stringify(prev)) return data.sound;
-            return prev;
-          });
-        }
+      } catch (err) {
+        console.error("Settings sync error:", err);
+      } finally {
+        setIsInitialSyncDone(true);
       }
-      setIsInitialSyncDone(true);
-    }, (err) => {
-      handleFirestoreError(err, OperationType.GET, path);
-      setIsInitialSyncDone(true);
-    });
+    };
 
-    return () => unsubscribe();
+    fetchSettings();
   }, [user]);
 
-  // Save settings to Firestore
+  // Save settings to Supabase
   useEffect(() => {
     if (!user || !isInitialSyncDone) return;
     
     const timer = setTimeout(async () => {
-      const path = `settings/${user.uid}`;
       try {
         setIsSettingsSyncing(true);
-        await setDoc(doc(db, "settings", user.uid), {
-          timer: settings,
-          theme: theme,
-          sound: sound,
-          updatedAt: serverTimestamp()
-        });
-        console.log("Settings saved to Firestore successfully");
+        await supabase
+          .from("user_settings")
+          .upsert({
+            user_id: user.id,
+            timer: settings,
+            theme: theme,
+            sound: sound,
+            updated_at: new Date().toISOString(),
+          });
       } catch (err) {
-        handleFirestoreError(err, OperationType.WRITE, path);
+        console.error("Failed to save settings:", err);
       } finally {
         setIsSettingsSyncing(false);
       }
@@ -231,7 +303,7 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [user, settings, theme, sound, isInitialSyncDone]);
 
-  // Track local changes separately to avoid race conditions
+  // Track local changes separately
   useEffect(() => {
     if (isInitialSyncDone) {
       lastLocalChangeRef.current = Date.now();
@@ -257,23 +329,39 @@ export default function App() {
     localStorage.setItem("pomo_sound", JSON.stringify(sound));
   }, [sound]);
 
+  useEffect(() => {
+    localStorage.setItem("pomo_last_main_task", mainTask);
+  }, [mainTask]);
+
+  useEffect(() => {
+    localStorage.setItem("pomo_last_topic", topic);
+  }, [topic]);
+
   const saveSession = async (session: Session) => {
     if (!user) return false;
-    const path = "sessions";
     try {
       setIsSyncing(true);
       setLastSyncStatus(null);
-      await addDoc(collection(db, path), {
-        ...session,
-        userId: user.uid,
-        createdAt: serverTimestamp()
-      });
+      const { error } = await supabase
+        .from("sessions")
+        .insert({
+          user_id: user.id,
+          date: session.date,
+          start_time: session.startTime,
+          end_time: session.endTime,
+          duration: session.duration,
+          main_task: session.mainTask,
+          topic: session.topic,
+        });
+
+      if (error) throw error;
       setLastSyncStatus("success");
+      await fetchSessions(user.id);
       return true;
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, path);
+    } catch (err: any) {
+      console.error("Error saving session:", err);
       setLastSyncStatus("error");
-      setError("Failed to save session to Firestore.");
+      setError("Failed to save session to Supabase.");
       return false;
     } finally {
       setIsSyncing(false);
@@ -289,7 +377,7 @@ export default function App() {
       const play = () => {
         if (count < sound.repeatCount) {
           audio.currentTime = 0;
-          audio.play().catch(e => console.error("Audio playback failed:", e));
+          audio.play().catch((e) => console.error("Audio playback failed:", e));
           count++;
         }
       };
@@ -340,25 +428,34 @@ export default function App() {
   }, [mode, mainTask, topic, startTime, settings, sound, user]);
 
   const handleDeleteSession = async (id: string) => {
-    const path = `sessions/${id}`;
     try {
-      await deleteDoc(doc(db, "sessions", id));
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, path);
+      const { error } = await supabase.from("sessions").delete().eq("id", id);
+      if (error) throw error;
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+    } catch (err: any) {
+      console.error("Error deleting session:", err);
       setError("Failed to delete session.");
     }
   };
 
   const handleUpdateSession = async (id: string, updates: Partial<Session>) => {
-    const path = `sessions/${id}`;
     try {
-      await updateDoc(doc(db, "sessions", id), {
-        ...updates,
-        updatedAt: serverTimestamp()
-      });
+      const dbUpdates: any = {
+        updated_at: new Date().toISOString(),
+      };
+      if (updates.date !== undefined) dbUpdates.date = updates.date;
+      if (updates.startTime !== undefined) dbUpdates.start_time = updates.startTime;
+      if (updates.endTime !== undefined) dbUpdates.end_time = updates.endTime;
+      if (updates.duration !== undefined) dbUpdates.duration = updates.duration;
+      if (updates.mainTask !== undefined) dbUpdates.main_task = updates.mainTask;
+      if (updates.topic !== undefined) dbUpdates.topic = updates.topic;
+
+      const { error } = await supabase.from("sessions").update(dbUpdates).eq("id", id);
+      if (error) throw error;
       setLastSyncStatus("success");
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, path);
+      if (user) await fetchSessions(user.id);
+    } catch (err: any) {
+      console.error("Error updating session:", err);
       setError("Failed to update session.");
     }
   };
@@ -373,7 +470,6 @@ export default function App() {
   useEffect(() => {
     if (!isActive) {
       const newTime = settings[mode] * 60;
-      console.log(`Setting timeLeft to ${newTime}s based on mode: ${mode} and settings:`, settings);
       setTimeLeft(newTime);
     }
   }, [mode, settings, isActive]);
@@ -392,23 +488,8 @@ export default function App() {
     };
   }, [isActive, timeLeft, handleTimerComplete]);
 
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
-
-  const handleLogin = async () => {
-    if (isLoggingIn) return;
-    setIsLoggingIn(true);
-    setError(null);
-    try {
-      await loginWithGoogle();
-    } catch (err: any) {
-      console.error("Login failed:", err);
-      // Ignore if user closed the popup
-      if (err.code !== "auth/popup-closed-by-user" && err.code !== "auth/cancelled-popup-request") {
-        setError("Login failed: " + (err.message || "Unknown error"));
-      }
-    } finally {
-      setIsLoggingIn(false);
-    }
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
   };
 
   const handleShare = () => {
@@ -427,44 +508,14 @@ export default function App() {
   }
 
   if (!user) {
-    return (
-      <div className="min-h-screen bg-rose-500 flex items-center justify-center p-4">
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full text-center"
-        >
-          <div className="w-20 h-20 bg-rose-100 text-rose-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <TimerIcon className="w-10 h-10" />
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Study Timer by Sai</h1>
-          <p className="text-gray-500 mb-8">Sign in to track your study sessions and visualize your progress with Firebase.</p>
-          <button
-            onClick={handleLogin}
-            disabled={isLoggingIn}
-            className="w-full flex items-center justify-center gap-3 bg-gray-900 text-white py-4 rounded-2xl font-bold hover:bg-gray-800 transition-all shadow-lg disabled:opacity-50"
-          >
-            {isLoggingIn ? (
-              <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-            ) : (
-              <LogIn className="w-5 h-5" />
-            )}
-            {isLoggingIn ? "Signing in..." : "Continue with Google"}
-          </button>
-          
-          <div className="mt-12 text-center">
-            <p className="text-gray-400 text-xs font-medium tracking-wide">
-              Made with <span className="text-rose-500 animate-pulse">♥️</span> by <span className="text-gray-900 font-bold">Sai</span>, Enjoy!
-            </p>
-          </div>
-        </motion.div>
-      </div>
-    );
+    return <AuthView onSuccess={() => {}} />;
   }
 
   const isDarkMode = settings.darkModeWhenRunning && isActive;
   const currentThemeClass = isDarkMode ? "bg-gray-950" : theme[mode];
   const currentTextClass = isDarkMode ? "text-white" : "text-gray-900";
+  const userDisplayName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split("@")[0] || "User";
+  const userAvatar = user.user_metadata?.avatar_url || user.user_metadata?.picture;
 
   return (
     <div className={`min-h-screen transition-colors duration-1000 ${currentThemeClass} font-sans ${currentTextClass}`}>
@@ -472,20 +523,20 @@ export default function App() {
       <nav className="fixed top-0 left-0 right-0 z-50 flex justify-center p-2 sm:p-4">
         <div className="flex items-center gap-0.5 sm:gap-1 p-1 bg-white/20 backdrop-blur-lg rounded-2xl border border-white/30 shadow-xl max-w-[98vw] overflow-x-auto no-scrollbar">
           <div className="flex items-center gap-2 px-3 py-1.5 mr-1 border-r border-white/20 shrink-0">
-            {user.photoURL ? (
-              <img 
-                src={user.photoURL} 
-                alt={user.displayName || ""} 
-                className="w-6 h-6 rounded-full border border-white/40" 
-                referrerPolicy="no-referrer" 
+            {userAvatar ? (
+              <img
+                src={userAvatar}
+                alt={userDisplayName}
+                referrerPolicy="no-referrer"
+                className="w-6 h-6 rounded-full object-cover border border-white/40"
               />
             ) : (
               <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
-                <User className="w-4 h-4 text-white" />
+                <UserIcon className="w-4 h-4 text-white" />
               </div>
             )}
-            <span className="hidden lg:block text-xs font-bold text-white whitespace-nowrap">
-              Hi, {user.displayName?.split(" ")[0] || "User"}
+            <span className="hidden lg:block text-xs font-bold text-white whitespace-nowrap max-w-[120px] truncate">
+              Hi, {userDisplayName}
             </span>
           </div>
 
@@ -547,7 +598,7 @@ export default function App() {
           </button>
           
           <button
-            onClick={logout}
+            onClick={handleLogout}
             className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-white hover:bg-white/10 transition-all shrink-0"
             title="Sign Out"
           >
@@ -586,8 +637,8 @@ export default function App() {
                     type="text"
                     value={mainTask}
                     onChange={(e) => setMainTask(e.target.value)}
-                    placeholder="e.g. Mathematics"
-                    className="w-full px-5 py-3 rounded-2xl bg-white/10 border border-white/20 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-white/30 transition-all text-base"
+                    placeholder="Enter main task"
+                    className="w-full px-5 py-3 rounded-2xl bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/30 transition-all text-base"
                   />
                 </div>
                 <div className="space-y-2">
@@ -598,8 +649,8 @@ export default function App() {
                     type="text"
                     value={topic}
                     onChange={(e) => setTopic(e.target.value)}
-                    placeholder="e.g. Calculus"
-                    className="w-full px-5 py-3 rounded-2xl bg-white/10 border border-white/20 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-white/30 transition-all text-base"
+                    placeholder="Enter specific topic"
+                    className="w-full px-5 py-3 rounded-2xl bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/30 transition-all text-base"
                   />
                 </div>
               </div>
@@ -639,7 +690,7 @@ export default function App() {
                   className="mt-8 flex items-center gap-2 px-4 py-2 bg-white/10 rounded-full border border-white/20"
                 >
                   <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
-                  <span className="text-white/70 text-xs font-bold uppercase tracking-widest">Saving to Firebase...</span>
+                  <span className="text-white/70 text-xs font-bold uppercase tracking-widest">Saving to Supabase...</span>
                 </motion.div>
               )}
 
@@ -681,7 +732,7 @@ export default function App() {
                 <div className="flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${isSyncing ? "bg-amber-400 animate-pulse" : lastSyncStatus === "error" ? "bg-rose-500" : "bg-emerald-500"}`} />
                   <span className="text-white/60 text-xs font-medium">
-                    {isSyncing ? "Syncing..." : lastSyncStatus === "error" ? "Sync Failed" : "Synced with Firestore"}
+                    {isSyncing ? "Syncing..." : lastSyncStatus === "error" ? "Sync Failed" : "Synced with Supabase"}
                   </span>
                 </div>
               </div>

@@ -172,7 +172,7 @@ export default function HistoryActions({ sessions, onInsert, isDarkMode }: Histo
                       <input
                         type="text"
                         required
-                        placeholder="e.g. ERP Project"
+                        placeholder="Enter main task"
                         value={newSession.mainTask}
                         onChange={(e) => setNewSession({ ...newSession, mainTask: e.target.value })}
                         className={`w-full px-4 py-3 rounded-xl font-bold focus:outline-none focus:ring-2 transition-all ${
@@ -188,7 +188,7 @@ export default function HistoryActions({ sessions, onInsert, isDarkMode }: Histo
                       <input
                         type="text"
                         required
-                        placeholder="e.g. Module A"
+                        placeholder="Enter specific topic"
                         value={newSession.topic}
                         onChange={(e) => setNewSession({ ...newSession, topic: e.target.value })}
                         className={`w-full px-4 py-3 rounded-xl font-bold focus:outline-none focus:ring-2 transition-all ${
