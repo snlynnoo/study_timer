@@ -32,9 +32,33 @@ export function openDatabase(filename = process.env.DATABASE_PATH || path.resolv
       token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), expires_at INTEGER NOT NULL
     );
     CREATE TABLE IF NOT EXISTS migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS registration_limits (
+      key TEXT PRIMARY KEY, count INTEGER NOT NULL, expires_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS registration_challenges (
+      id TEXT PRIMARY KEY, ip_hash TEXT NOT NULL, issued_at INTEGER NOT NULL, expires_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), expires_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS feedback (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id),
+      subject TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL, read_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS feedback_created ON feedback(created_at DESC,id DESC);
+    CREATE INDEX IF NOT EXISTS feedback_user_created ON feedback(user_id,created_at);
+    CREATE TABLE IF NOT EXISTS registration_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL UNIQUE REFERENCES users(id)
+    );
+    CREATE TABLE IF NOT EXISTS registration_seen (
+      admin_id TEXT PRIMARY KEY REFERENCES users(id), through_id INTEGER NOT NULL DEFAULT 0
+    );
   `);
   const columns=db.prepare('PRAGMA table_info(sessions)').all();
   if(!columns.some(column=>column.name==='break_seconds')) db.exec('ALTER TABLE sessions ADD COLUMN break_seconds INTEGER CHECK(break_seconds IS NULL OR break_seconds >= 0)');
+  const userColumns=db.prepare('PRAGMA table_info(users)').all();
+  if(!userColumns.some(column=>column.name==='is_active'))db.exec('ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1))');
+  if(!userColumns.some(column=>column.name==='deleted_at'))db.exec('ALTER TABLE users ADD COLUMN deleted_at TEXT');
   return db;
 }
 export type Database = ReturnType<typeof openDatabase>;

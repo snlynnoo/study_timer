@@ -1,0 +1,41 @@
+name: Validate for VPS deployment
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: study-timer-production
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Test and build production release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run lint
+      - run: npm run build
+      - run: npm audit --audit-level=high
+      - name: Validate deployment controller
+        run: python3 -m unittest discover -s deploy -p 'test_*.py' -v
+      - name: Build production container
+        run: docker build --tag "study-timer-ci:$GITHUB_SHA" .
+      - name: Explain deployment handoff
+        run: |
+          echo 'Once this workflow succeeds, the VPS checks for the release every two minutes.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'The VPS deploys only the current main commit, backs up its database, and checks container health.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Live site: https://studytimer.snlynnoo.dev' >> "$GITHUB_STEP_SUMMARY"

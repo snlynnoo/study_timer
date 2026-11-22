@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import {APP_LABEL} from './lib/appInfo';
 import { format } from "date-fns";
 import { TimerMode, Session, TimerSettings, ThemeSettings, SoundSettings } from "./types";
 import Timer from "./components/Timer";
@@ -20,6 +21,8 @@ import { usePomodoroTimer } from "./hooks/usePomodoroTimer";
 import type { TimerEvent } from "./lib/timerMachine";
 import LongBreakPrompt from "./components/LongBreakPrompt";
 import BreakDuration from "./components/BreakDuration";
+import FeedbackView from './components/FeedbackView';
+import {MessageSquare} from 'lucide-react';
 
 export default function App() {
   const [fontSize, setFontSize] = useState(() => {
@@ -30,8 +33,12 @@ export default function App() {
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [mainTask, setMainTask] = useState("");
   const [topic, setTopic] = useState("");
+  const [taskDetailsRequested,setTaskDetailsRequested]=useState(false);
+  const [newRegistrations,setNewRegistrations]=useState(0);
+  const [unreadFeedback,setUnreadFeedback]=useState(0);
+  const [usersListVersion,setUsersListVersion]=useState(0);
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [view, setView] = useState<"timer" | "dashboard" | "list" | "info" | "users" | "todos" | "settings">("timer");
+  const [view, setView] = useState<"timer" | "dashboard" | "list" | "info" | "users" | "todos" | "settings" | "feedback">("timer");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -45,7 +52,31 @@ export default function App() {
   const [sound, setSound] = useState<SoundSettings>({ enabled: true, type: "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3", volume: 0.5, repeatCount: 1 });
   const lastLocalChangeRef = useRef<number>(0);
   const currentUserId = useRef(user?.id);
+  const mainTaskInput=useRef<HTMLInputElement>(null);
+  const topicInput=useRef<HTMLInputElement>(null);
+  const feedbackCountRequest=useRef(0);
   currentUserId.current = user?.id;
+  const refreshRegistrationCount=()=>{
+    const owner=user?.id;
+    if(user?.role!=='admin')return;
+    api<{count:number}>('/users/registrations').then(({count})=>{if(currentUserId.current===owner)setNewRegistrations(count);}).catch(()=>{});
+    const request=++feedbackCountRequest.current;
+    api<{count:number}>('/feedback/unread-count').then(({count})=>{
+      if(currentUserId.current===owner&&request===feedbackCountRequest.current)setUnreadFeedback(count);
+    }).catch(()=>{});
+  };
+  const updateFeedbackCount=(count:number)=>{
+    if(user?.role==='admin'&&currentUserId.current===user.id){feedbackCountRequest.current++;setUnreadFeedback(count);}
+  };
+  useEffect(()=>{
+    setNewRegistrations(0);
+    setUnreadFeedback(0);feedbackCountRequest.current++;
+    if(user?.role!=='admin')return;
+    refreshRegistrationCount();
+    const interval=setInterval(refreshRegistrationCount,30_000);
+    window.addEventListener('focus',refreshRegistrationCount);
+    return()=>{clearInterval(interval);window.removeEventListener('focus',refreshRegistrationCount);};
+  },[user?.id,user?.role]);
 
   useEffect(() => {
     document.documentElement.style.fontSize = `${fontSize}px`;
@@ -57,10 +88,11 @@ export default function App() {
     setSettings({work:25,shortBreak:5,longBreak:15,darkModeWhenRunning:false});
     setTheme({work:"bg-indigo-900",shortBreak:"bg-yellow-400",longBreak:"bg-green-500"});
     setSound({enabled:true,type:"https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3",volume:0.5,repeatCount:1});
-    setView("timer"); setMainTask(""); setTopic(""); setError(null); setUser(account);
+    setView("timer"); setMainTask(""); setTopic(""); setTaskDetailsRequested(false); setError(null); setUser(account);
   };
 
   useEffect(() => {
+    if(window.location.hash.startsWith('#reset-password=')){setIsAuthReady(true);setIsLoading(false);return;}
     api('/auth/me').then(({user}) => { if (user) signedIn(user); })
       .catch(e => setError(e.message))
       .finally(() => {setIsAuthReady(true);setIsLoading(false);});
@@ -189,6 +221,16 @@ export default function App() {
     onComplete:(completedMode)=>{playSound();showNotification(completedMode);},
     onRestore:state=>{setMainTask(state.focusTask||'');setTopic(state.focusTopic||'');}});
   const {mode,timeLeft,isActive,setMode,toggle:toggleTimer,reset:resetTimer}=timer;
+  const startOrPauseTimer=(active:boolean)=>{
+    if(active&&mode==='work'&&(!mainTask.trim()||!topic.trim())) {
+      setTaskDetailsRequested(true);
+      const input=!mainTask.trim()?mainTaskInput.current:topicInput.current;
+      input?.focus();input?.scrollIntoView({behavior:'smooth',block:'center'});
+      return;
+    }
+    setTaskDetailsRequested(false);
+    toggleTimer(active);
+  };
 
   const handleDeleteSession = async (id: string) => {
     try {
@@ -259,8 +301,9 @@ export default function App() {
           <NavButton active={view === 'list'} onClick={()=>setView('list')} icon={<List size={19}/>} label="History"/>
           <NavButton active={view === 'todos'} onClick={()=>setView('todos')} icon={<CalendarDays size={19}/>} label="To-do"/>
           <NavButton active={view === 'info'} onClick={()=>setView('info')} icon={<Info size={19}/>} label="Guide"/>
-          {user.role === 'admin' && <NavButton active={view === 'users'} onClick={()=>setView('users')} icon={<UserIcon size={19}/>} label="Users"/>}
+          {user.role === 'admin' && <NavButton active={view === 'users'} onClick={()=>{setView('users');setUsersListVersion(value=>value+1);}} icon={<UserIcon size={19}/>} label="Users" badge={newRegistrations}/>}
           <NavButton active={view === 'settings'} onClick={()=>setView('settings')} icon={<SettingsIcon size={19}/>} label="Settings"/>
+          <NavButton active={view === 'feedback'} onClick={()=>setView('feedback')} icon={<MessageSquare size={19}/>} label="Feedback" badge={user.role==='admin'?unreadFeedback:0} badgeLabel={`${unreadFeedback} unread feedback messages`}/>
         </nav>
         <div className="sidebar-bottom">
           <div className="sidebar-profile"><span className="profile-avatar">{userDisplayName.slice(0,1)}</span><span><strong>{userDisplayName}</strong><small>{user.role === 'admin' ? 'Administrator' : 'Your personal workspace'}</small></span><button onClick={handleLogout} title="Sign Out" aria-label="Sign Out"><LogOut size={17}/></button></div>
@@ -290,7 +333,8 @@ export default function App() {
         isDarkMode={isDarkMode}
         />}
         {view === 'todos' && <TodoView key={user.id}/> }
-        {view === 'users' && user.role === 'admin' && <UsersView currentUserId={user.id} onOwnPasswordReset={() => {toggleTimer(false);setUser(null);setSessions([]);setIsInitialSyncDone(false);setView('timer');}} />}
+        {view === 'feedback' && <FeedbackView isAdmin={user.role==='admin'} onUnreadChange={updateFeedbackCount}/>}
+        {view === 'users' && user.role === 'admin' && <UsersView refreshVersion={usersListVersion} currentUserId={user.id} onRegistrationsSeen={refreshRegistrationCount} onOwnPasswordReset={() => {toggleTimer(false);setUser(null);setSessions([]);setIsInitialSyncDone(false);setView('timer');}} />}
         <AnimatePresence mode="wait">
           {view === "timer" && (
             <motion.div
@@ -313,11 +357,20 @@ export default function App() {
                     <ModeButton active={mode==='shortBreak'} onClick={()=>setMode('shortBreak')} label="Short Break"/>
                     <ModeButton active={mode==='longBreak'} onClick={()=>setMode('longBreak')} label="Long Break"/>
                   </div>
-                  <Timer mode={mode} duration={timer.duration} timeLeft={timeLeft} isActive={isActive} onToggle={toggleTimer} onReset={resetTimer} disabled={!isInitialSyncDone||timer.awaitingLongBreak} theme={theme}/>
-                  <div className="timer-bottomline"><span className="timer-bottom-dot"/>{isSyncing ? 'Saving your session…' : lastSyncStatus === 'error' ? 'Could not save your session' : lastSyncStatus === 'success' ? 'Session saved. Nicely done!' : 'Your progress is saved on this device.'}</div>
+                  <Timer mode={mode} duration={timer.duration} timeLeft={timeLeft} isActive={isActive} onToggle={startOrPauseTimer} onReset={resetTimer} disabled={!isInitialSyncDone||timer.awaitingLongBreak} theme={theme}/>
+                  {(isSyncing||lastSyncStatus==='error')&&<div className="timer-bottomline" role="status"><span className="timer-bottom-dot"/>{isSyncing?'Saving your session…':'Could not save your session'}</div>}
                 </section>
                 <div className="focus-side">
-                  <section className="intention-card"><div className="card-heading"><span className="small-icon"><BookIcon/></span><h2>Current task</h2></div><label htmlFor="main-task">MAIN TASK / MODULE</label><input id="main-task" value={mainTask} onChange={e=>setMainTask(e.target.value)} placeholder="What are you working on?" maxLength={1000}/><label htmlFor="topic">SPECIFIC TOPIC</label><input id="topic" value={topic} onChange={e=>setTopic(e.target.value)} placeholder="Break it into something small" maxLength={1000}/></section>
+                  <section className="intention-card">
+                    <div className="card-heading"><span className="small-icon"><BookIcon/></span><h2>Current task</h2></div>
+                    {taskDetailsRequested&&(!mainTask.trim()||!topic.trim())&&<p className="task-details-prompt" role="alert">Enter your main task/topic and sub-task/topic, then select Start focus.</p>}
+                    <label htmlFor="main-task">Main Task / Topic</label>
+                    <input ref={mainTaskInput} id="main-task" value={mainTask} onChange={e=>setMainTask(e.target.value)} placeholder="What are you working on?" maxLength={1000} aria-required="true" aria-invalid={taskDetailsRequested&&!mainTask.trim()} aria-describedby={taskDetailsRequested&&!mainTask.trim()?'main-task-error':undefined}/>
+                    {taskDetailsRequested&&!mainTask.trim()&&<p id="main-task-error" className="task-field-error">Please enter a main task/topic.</p>}
+                    <label htmlFor="topic">Sub-Task / Topic</label>
+                    <input ref={topicInput} id="topic" value={topic} onChange={e=>setTopic(e.target.value)} placeholder="Break it into something small" maxLength={1000} aria-required="true" aria-invalid={taskDetailsRequested&&!topic.trim()} aria-describedby={taskDetailsRequested&&!topic.trim()?'topic-error':undefined}/>
+                    {taskDetailsRequested&&!topic.trim()&&<p id="topic-error" className="task-field-error">Please enter a sub-task/topic.</p>}
+                  </section>
                 </div>
               </div>
               <section className="recent-section"><div className="recent-heading"><h3>Recent sessions <span>{sessions.length}</span></h3><button onClick={()=>setView('list')}>View history <ArrowUpRight size={15}/></button></div>{sessions.length ? <div className="recent-rows">{sessions.slice(0,3).map(session=><div className="recent-row" key={session.id}><span className="recent-session-icon"><Check size={16}/></span><div><strong>{session.mainTask || 'Focus session'}</strong><small>{session.topic || 'General'}</small></div><span className="recent-date">{format(new Date(session.date+'T12:00:00'),'MMM d')}</span><div className="session-durations"><span className="duration-tag">{session.duration} min focus</span><BreakDuration seconds={session.breakSeconds}/></div></div>)}</div> : <div className="recent-empty"><span><Target size={21}/></span><div><strong>Your first session starts here.</strong><p>Choose a task and press start. We’ll take care of the rest.</p></div></div>}</section>
@@ -381,7 +434,7 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        <footer className="workspace-footer"><span>Made with <span className="footer-heart">♥</span> by Sai</span><span>STUDYTIMER · 1.2</span></footer>
+        <footer className="workspace-footer"><span>Made with <span className="footer-heart">♥</span> by Sai</span><span>{APP_LABEL}</span></footer>
       </main>
       </div>
       {timer.awaitingLongBreak && <LongBreakPrompt minutes={settings.longBreak} onOkay={timer.acknowledgeLongBreak}/>}
@@ -389,8 +442,8 @@ export default function App() {
   );
 }
 
-function NavButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
-  return <button onClick={onClick} className={`nav-button ${active ? 'selected' : ''}`} aria-current={active ? 'page' : undefined} aria-label={label}>{icon}<span>{label}</span>{active && <span className="nav-active-dot"/>}</button>;
+function NavButton({ active, onClick, icon, label,badge=0,badgeLabel }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string;badge?:number;badgeLabel?:string }) {
+  return <button onClick={onClick} className={`nav-button ${active ? 'selected' : ''}`} aria-current={active ? 'page' : undefined} aria-label={label}>{icon}<span>{label}</span>{badge>0?<span className="nav-count" role="status" aria-label={badgeLabel??`${badge} new registrations`}>{badge}</span>:active&&<span className="nav-active-dot"/>}</button>;
 }
 function ModeButton({active,onClick,label}: {active:boolean;onClick:()=>void;label:string}) {
   return <button onClick={onClick} className={active ? 'mode-button selected' : 'mode-button'} aria-pressed={active}>{label}</button>;

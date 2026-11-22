@@ -63,8 +63,8 @@ export default function SettingsPage({
       <div className="settings-content">
             {/* Timer Settings */}
             <section>
-              <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">
-                Timer Durations (Minutes)
+              <h3 className="settings-section-title mb-4">
+                Timer durations (minutes)
               </h3>
               <div className="grid grid-cols-3 gap-4 mb-6">
                 <DurationInput
@@ -110,8 +110,8 @@ export default function SettingsPage({
             {/* Sound Settings */}
             <section>
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest">
-                  Sound & Notifications
+                <h3 className="settings-section-title">
+                  Sound & notifications
                 </h3>
                 <button
                   aria-label="Enable sound"
@@ -200,8 +200,8 @@ export default function SettingsPage({
 
             {/* Theme Settings */}
             <section>
-              <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">
-                Color Themes
+              <h3 className="settings-section-title mb-4">
+                Color themes
               </h3>
               <div className="space-y-6">
                 <ThemePicker

@@ -7,6 +7,9 @@ export interface LocalUser {
   created_at: string;
   last_sign_in_at: string | null;
   needs_password: boolean;
+  is_active: boolean;
+  deleted_at: string | null;
+  registration_id?:number|null;
 }
 export async function api<T = any>(url: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`/api${url}`, {

@@ -4,6 +4,8 @@ import { promisify } from 'node:util';
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import type { Database } from './database.ts';
+import {createRegistrationRouter,registrationEnabled} from './registration.ts';
+import {createRecoveryRouter} from './recovery.ts';
 
 const scrypt = promisify(scryptCallback);
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -22,7 +24,9 @@ async function verifyPassword(password: string, stored: string) {
   return expected.length === hash.length && timingSafeEqual(expected, hash);
 }
 const safeUser = (u: Row) => ({ id: u.id, email: u.email, name: u.name, role: u.role, created_at: u.created_at,
-  last_sign_in_at: u.last_sign_in_at, needs_password: !u.password_hash, user_metadata: { name: u.name } });
+  last_sign_in_at: u.last_sign_in_at, needs_password: !u.password_hash, is_active:!!u.is_active, deleted_at:u.deleted_at,
+  registration_id:u.registration_id??null,
+  user_metadata: { name: u.name } });
 class HttpError extends Error { constructor(public status: number, message: string) { super(message); } }
 const requirePassword = (value: unknown) => {
   if (typeof value !== 'string' || value.length < 10 || value.length > 128) throw new HttpError(400, 'Use a password between 10 and 128 characters.');
@@ -47,7 +51,7 @@ const dummyPasswordHash = await hashPassword(randomBytes(32).toString('hex'));
 
 export function createApi(db: Database, setupFile = path.resolve('.data/setup-code.txt')) {
   const api = express.Router();
-  const pendingAdmin = () => db.prepare("SELECT * FROM users WHERE role = 'admin' AND password_hash IS NULL LIMIT 1").get() as Row | undefined;
+  const pendingAdmin = () => db.prepare("SELECT * FROM users WHERE role = 'admin' AND password_hash IS NULL AND is_active=1 AND deleted_at IS NULL LIMIT 1").get() as Row | undefined;
   if (pendingAdmin() && !existsSync(setupFile)) writeFileSync(setupFile, randomBytes(24).toString('hex') + '\n', { mode: 0o600 });
   const attempts = new Map<string, { count: number, until: number }>();
   api.use((_req, res, next) => { res.setHeader('Cache-Control','no-store'); next(); });
@@ -73,7 +77,7 @@ export function createApi(db: Database, setupFile = path.resolve('.data/setup-co
   const currentUser = (req: Request) => {
     const cookie = req.headers.cookie?.split(';').map(c => c.trim()).find(c => c.startsWith('study_session='))?.slice(14);
     if (!cookie) return undefined;
-    return db.prepare('SELECT u.* FROM auth_sessions a JOIN users u ON u.id=a.user_id WHERE a.token_hash=? AND a.expires_at>?').get(digest(cookie),Date.now()) as Row | undefined;
+    return db.prepare('SELECT u.* FROM auth_sessions a JOIN users u ON u.id=a.user_id WHERE a.token_hash=? AND a.expires_at>? AND u.is_active=1 AND u.deleted_at IS NULL').get(digest(cookie),Date.now()) as Row | undefined;
   };
   const issueSession = (res: Response, user: Row) => {
     const token = randomBytes(32).toString('hex');
@@ -82,7 +86,10 @@ export function createApi(db: Database, setupFile = path.resolve('.data/setup-co
     res.setHeader('Set-Cookie', `study_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`);
   };
   api.get('/health', (_req,res) => res.json({ status:'ok', database:'sqlite' }));
-  api.get('/auth/setup', (_req,res) => res.json({ required: !!pendingAdmin(), email: pendingAdmin()?.email }));
+  api.get('/auth/setup', (_req,res) => res.json({ required: !!pendingAdmin(), email: pendingAdmin()?.email,
+    registrationEnabled:registrationEnabled() && !!db.prepare("SELECT 1 FROM users WHERE role='admin' AND password_hash IS NOT NULL AND is_active=1 AND deleted_at IS NULL").get() }));
+  api.use('/auth/register',createRegistrationRouter(db,{hashPassword,safeUser,issueSession}));
+  api.use('/auth',createRecoveryRouter(db,{hashPassword}));
   api.post('/auth/setup', route(async (req,res) => {
     const admin = pendingAdmin();
     if (!admin || !existsSync(setupFile)) throw new HttpError(409,'Administrator setup is already complete.');
@@ -100,7 +107,7 @@ export function createApi(db: Database, setupFile = path.resolve('.data/setup-co
     const password = text(req.body.password,128);
     const user = db.prepare('SELECT * FROM users WHERE email=?').get(email) as Row | undefined;
     const valid = await verifyPassword(password,user?.password_hash || dummyPasswordHash);
-    if (!user?.password_hash || !valid) throw new HttpError(401,'Incorrect email or password. Migrated accounts need a local password set by the administrator.');
+    if (!user?.password_hash || !valid || !user.is_active || user.deleted_at) throw new HttpError(401,'Incorrect email or password, or account unavailable.');
     db.prepare('UPDATE users SET last_sign_in_at=? WHERE id=?').run(now(),user.id);
     issueSession(res,user);
     attempts.delete(req.ip || 'local');
@@ -119,7 +126,55 @@ export function createApi(db: Database, setupFile = path.resolve('.data/setup-co
     res.locals.user=user; next();
   });
   api.use('/users', (_req,res,next) => next(res.locals.user.role === 'admin' ? undefined : new HttpError(403,'Administrator access required.')));
-  api.get('/users', (_req,res) => res.json(db.prepare('SELECT * FROM users ORDER BY created_at').all().map(safeUser)));
+  api.get('/users/registrations',(_req,res)=>{
+    const seen=db.prepare('SELECT through_id FROM registration_seen WHERE admin_id=?').get(res.locals.user.id)?.through_id??0;
+    const count=Number(db.prepare('SELECT count(*) AS count FROM registration_events r JOIN users u ON u.id=r.user_id WHERE r.id>? AND u.deleted_at IS NULL').get(seen)!.count);
+    res.json({count});
+  });
+  api.post('/users/registrations/seen',route((req,res)=>{
+    const through=req.body.through_id;
+    const maximum=Number(db.prepare('SELECT COALESCE(MAX(id),0) AS maximum FROM registration_events').get()!.maximum);
+    if(!Number.isSafeInteger(through)||through<0||through>maximum)throw new HttpError(400,'Invalid registration marker.');
+    db.prepare('INSERT INTO registration_seen VALUES (?,?) ON CONFLICT(admin_id) DO UPDATE SET through_id=MAX(through_id,excluded.through_id)').run(res.locals.user.id,through);
+    res.json({ok:true});
+  }));
+  api.get('/users', (req,res) => res.json(db.prepare(`SELECT u.*,r.id AS registration_id FROM users u LEFT JOIN registration_events r ON r.user_id=u.id ${req.query.include_deleted==='true'?'':'WHERE u.deleted_at IS NULL'} ORDER BY u.created_at`).all().map(safeUser)));
+  const manageableUser=(req:Request,res:Response)=>{
+    if(req.params.id===res.locals.user.id)throw new HttpError(400,'You cannot deactivate or delete your own account.');
+    const target=db.prepare('SELECT * FROM users WHERE id=?').get(req.params.id) as Row|undefined;
+    if(!target)throw new HttpError(404,'User not found.');
+    return target;
+  };
+  const revokeUser=(id:string)=>{
+    db.prepare('DELETE FROM auth_sessions WHERE user_id=?').run(id);
+    db.prepare('DELETE FROM password_reset_tokens WHERE user_id=?').run(id);
+  };
+  api.patch('/users/:id',route((req,res)=>{
+    const target=manageableUser(req,res);
+    if(target.deleted_at)throw new HttpError(400,'Restore this account before changing its status.');
+    if(typeof req.body.is_active!=='boolean')throw new HttpError(400,'Active status must be true or false.');
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.prepare('UPDATE users SET is_active=? WHERE id=?').run(req.body.is_active?1:0,target.id);
+      if(!req.body.is_active)revokeUser(target.id);
+      db.exec('COMMIT');
+    } catch(error){db.exec('ROLLBACK');throw error;}
+    res.json({ok:true});
+  }));
+  api.delete('/users/:id',route((req,res)=>{
+    const target=manageableUser(req,res);
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.prepare('UPDATE users SET deleted_at=?,is_active=0 WHERE id=?').run(now(),target.id);revokeUser(target.id);
+      db.exec('COMMIT');
+    } catch(error){db.exec('ROLLBACK');throw error;}
+    res.json({ok:true});
+  }));
+  api.post('/users/:id/restore',route((req,res)=>{
+    const target=manageableUser(req,res);
+    db.prepare('UPDATE users SET deleted_at=NULL,is_active=0 WHERE id=?').run(target.id);
+    res.json({ok:true});
+  }));
   api.post('/users', route(async (req,res) => {
     const email=emailValue(req.body.email), name=text(req.body.name).trim() || email.split('@')[0];
     if (db.prepare('SELECT 1 FROM users WHERE email=?').get(email)) throw new HttpError(409,'An account with this email already exists.');
@@ -129,12 +184,13 @@ export function createApi(db: Database, setupFile = path.resolve('.data/setup-co
     res.status(201).json(safeUser(db.prepare('SELECT * FROM users WHERE id=?').get(id) as Row));
   }));
   api.post('/users/:id/password', route(async (req,res) => {
-    if (!db.prepare('SELECT 1 FROM users WHERE id=?').get(req.params.id)) throw new HttpError(404,'User not found.');
+    if (!db.prepare('SELECT 1 FROM users WHERE id=? AND deleted_at IS NULL').get(req.params.id)) throw new HttpError(404,'User not found.');
     const hash=await hashPassword(requirePassword(req.body.password));
     db.exec('BEGIN IMMEDIATE');
     try {
       db.prepare('UPDATE users SET password_hash=? WHERE id=?').run(hash,req.params.id);
       db.prepare('DELETE FROM auth_sessions WHERE user_id=?').run(req.params.id);
+      db.prepare('DELETE FROM password_reset_tokens WHERE user_id=?').run(req.params.id);
       db.exec('COMMIT');
     } catch (e) { db.exec('ROLLBACK'); throw e; }
     res.json({ok:true});
@@ -207,6 +263,39 @@ export function createApi(db: Database, setupFile = path.resolve('.data/setup-co
   }));
   api.delete('/todos/:id', route((req,res) => {
     if (!db.prepare('DELETE FROM todos WHERE id=? AND user_id=?').run(req.params.id,res.locals.user.id).changes) throw new HttpError(404,'Task not found.');
+    res.json({ok:true});
+  }));
+  api.post('/feedback',route((req,res)=>{
+    const subject=text(req.body.subject,200).trim(),message=text(req.body.message,5000).trim();
+    if(!subject||!message)throw new HttpError(400,'Enter a subject and feedback message.');
+    const recent=db.prepare('SELECT count(*) AS count FROM feedback WHERE user_id=? AND created_at>=?')
+      .get(res.locals.user.id,new Date(Date.now()-3600_000).toISOString())!;
+    if(Number(recent.count)>=10){res.setHeader('Retry-After','3600');throw new HttpError(429,'You have sent 10 messages in the past hour. Please try again later.');}
+    const id=randomUUID();
+    db.prepare('INSERT INTO feedback (id,user_id,subject,message,created_at) VALUES (?,?,?,?,?)')
+      .run(id,res.locals.user.id,subject,message,now());
+    res.status(201).json({id,message:'Your feedback has been sent to the administrator.'});
+  }));
+  api.get('/feedback/unread-count',route((_req,res)=>{
+    if(res.locals.user.role!=='admin')throw new HttpError(403,'Administrator access required.');
+    const count=Number(db.prepare('SELECT count(*) AS count FROM feedback WHERE read_at IS NULL').get()!.count);
+    res.json({count});
+  }));
+  api.get('/feedback',route((req,res)=>{
+    if(res.locals.user.role!=='admin')throw new HttpError(403,'Administrator access required.');
+    const page=Number(req.query.page??1);
+    if(!Number.isSafeInteger(page)||page<1||page>1_000_000)throw new HttpError(400,'Invalid inbox page.');
+    const total=Number(db.prepare('SELECT count(*) AS count FROM feedback').get()!.count);
+    const unread=Number(db.prepare('SELECT count(*) AS count FROM feedback WHERE read_at IS NULL').get()!.count);
+    const items=db.prepare(`SELECT f.*,u.name AS sender_name,u.email AS sender_email FROM feedback f
+      JOIN users u ON u.id=f.user_id ORDER BY f.created_at DESC,f.id DESC LIMIT 50 OFFSET ?`).all((page-1)*50);
+    res.json({items,total,unread,page,pageSize:50});
+  }));
+  api.patch('/feedback/:id',route((req,res)=>{
+    if(res.locals.user.role!=='admin')throw new HttpError(403,'Administrator access required.');
+    if(typeof req.body.read!=='boolean')throw new HttpError(400,'Read status must be true or false.');
+    if(!db.prepare('UPDATE feedback SET read_at=? WHERE id=?').run(req.body.read?now():null,req.params.id).changes)
+      throw new HttpError(404,'Feedback not found.');
     res.json({ok:true});
   }));
   api.get('/settings', (_req,res) => {

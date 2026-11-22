@@ -64,12 +64,38 @@ Resetting a password signs that user out of all local sessions. Resetting your o
 
 Users see their own study sessions, tasks, and settings. Ordinary users cannot open administrator account management. Use the sign-out icon beside your account to end the current sign-in; sign-in cookies otherwise expire after seven days.
 
+### Register your own account
+
+Administrators see a numeric badge on **Users** for unseen self-registrations. Opening Users loads the latest account list and acknowledges the registrations in that list; the selected-page orange dot then returns. Clicking Users again reloads it. Counts refresh on sign-in, when the window regains focus, and every 30 seconds. Seen status is stored per administrator in SQLite. Existing imported accounts and accounts created manually by an administrator do not count as new self-registrations.
+
+After administrator setup is complete, select **Create an account** on the sign-in page. Enter your name, email, password, and confirmation. Select **Verify** to run the browser security check, then **Create account**. Successful registration signs you in as an ordinary user; submitted administrator roles are ignored.
+
+Local registration opens by default. `REGISTRATION_ENABLED=false` disables it. Production defaults to disabled; `REGISTRATION_ENABLED=true` explicitly enables it. No VPS deployment is part of local feature development; deploy only when explicitly requested by the owner.
+
+Anti-abuse controls combine browser proof of work, a hidden spam trap, single-use challenges valid for ten minutes, and SQLite-backed hourly limits. Limits are 30 challenges and 10 registration submissions per IP, with global limits of 300 challenges and 100 submissions per hour. Failed submissions count, and restarting the app does not clear limits. Only two registration password hashes run concurrently. Proof of work increases automation cost; it does not prove a person is human or stop distributed attacks. Email ownership is not verified in this local version. Review public anti-bot and email-verification controls before enabling public registration.
+
+### Recover your password
+
+Select **Forgot password?**, enter your email, and request a link. The response is the same for existing and unknown accounts. For local testing, messages are written to the private `.data/password-reset-mail/` directory instead of being emailed. Open the newest message for your address and follow its link in the same local app. `RESET_MAIL_DIR` can select another private local folder.
+
+Choose and confirm a new password. Links expire after 30 minutes, can be used once, and revoke all existing sign-ins after success. Requesting a new link invalidates older links. Tokens are stored as hashes in SQLite and are never returned by the public API. Requests are limited to 20 per IP and 100 globally per hour; delivery is capped at three per email per hour. Mailbox files contain sensitive links; do not publish or share the folder, and remove old test messages when no longer needed.
+
+Email delivery is not configured yet. Recovery requests fail closed in production instead of exposing tokens or pretending mail was sent. Configure real email delivery before VPS release. A fresh clone without the private migrated database still needs administrator bootstrap as described above.
+
+### Activate, delete, or restore users
+
+In **Users**, the **Active** checkbox controls sign-in. Deactivation revokes current sign-ins and reset links immediately. Re-activation permits a new sign-in; it does not revive old sessions.
+
+**Delete** requires typing the account's email address. Deleted accounts lose access and disappear from the normal list. Their data is retained for recovery: select **Show deleted accounts**, then **Restore account**. Restored accounts remain inactive until you enable **Active**. Their email remains reserved while deleted. Administrators cannot deactivate or delete their own account. Administrator password resets remain available.
+
 ## Use the timer
 
 1. Open **Timer**.
-2. Enter the main task/module and specific topic for your session.
+2. Enter the **Main Task / Topic** and **Sub-Task / Topic** for your session.
 3. Select **Work**, then **Start focus**.
 4. Pause/resume as needed. Reset restarts the selected interval; an unfinished focus is not added to completed history.
+
+Both Main Task / Topic and Sub-Task / Topic are required before starting or resuming focus. If either is blank (including spaces only), the timer stays paused and highlights the first missing field. Enter the details, then select **Start focus** or **Resume session** again. Breaks do not require task details.
 
 Defaults are 25 minutes of work, a 5-minute short break, and a 15-minute long break. Saved account settings may differ.
 
@@ -102,6 +128,16 @@ The CSV contains Date, Start time, End time, Main task, Topic, Duration (min), a
 Open **To-do**, select a date, and use **Add task**. Tasks support a title, notes, a date, and completion status. Edit to update details or move a task to another date. The remove action asks for confirmation.
 
 Dates with tasks show a count below the date. Rust-colored pending indicators identify unfinished work; olive indicators identify dates whose tasks are all complete. Use the month arrows to browse and **Today** to return to the current date. Tasks are saved per account.
+
+## Send feedback and read the administrator inbox
+
+Open **Feedback** directly below **Settings**. Ordinary users can enter a subject (up to 200 characters) and a message (up to 5,000 characters), then select **Send feedback**. A confirmation appears after the message is saved. Up to ten messages can be submitted per account in a rolling hour.
+
+Administrators see an **Inbox** on the same page. Select a message to read its full text, sender name/email, and submission date/time. Use **Mark read** or **Mark unread** to update its status, **Refresh** for new messages, and the page controls to browse older messages. Read status is shared between administrators. Ordinary users cannot access the inbox or other users' feedback, including through the API.
+
+Messages are stored in the server's SQLite database and included in database backups. They appear directly in the app; this feature does not send email notifications. Development remains local until deployment is explicitly requested.
+
+Administrators also see the unread message count beside **Feedback** in the sidebar. It refreshes on sign-in, when the window regains focus, and every 30 seconds. Opening/refreshing the inbox and marking messages read or unread updates the badge. When no unread messages remain, the selected Feedback tab shows its normal orange dot. Ordinary users do not see an inbox count.
 
 ## Adjust appearance and alerts
 

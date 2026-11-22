@@ -29,6 +29,8 @@ Supabase passwords were not exported. Migrated users cannot sign in until the ad
 
 After signing in as administrator, open **Users** to add accounts or reset a user's password. Resetting a password revokes all of that user's local sign-ins, including your own if you reset the administrator password. Ordinary users can access only their own study sessions and settings.
 
+Users can also select **Create an account** and complete the local security check, or use **Forgot password?** for self-service recovery. Local reset messages are saved privately in `.data/password-reset-mail/`; email delivery must be configured before production use. Users now includes **Active**, recoverable **Delete**, and **Restore account** controls. See [documentation.md](documentation.md) for limits, setup, and production restrictions. Development stays local until VPS deployment is explicitly requested.
+
 ## Local database and migration
 
 The database is `.data/study-timer.sqlite`. Its tables include `users`, `sessions`, `user_settings`, `todos`, `auth_sessions`, and `migrations`. The `users` table stores password hashes, never plaintext passwords. Database files, setup codes, and the private migration snapshot are ignored by Git and blocked from the development web server.

@@ -8,3 +8,5 @@ dist/
 .data/
 *.sqlite
 *.sqlite-*
+__pycache__/
+*.pyc

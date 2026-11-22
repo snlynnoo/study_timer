@@ -6,7 +6,8 @@ The root domain is reserved for the separate portfolio project.
 
 ## Layout
 
-- `/srv/study-timer/app`: source, Dockerfile and app Compose project.
+- `/srv/study-timer/app`: symlink to the active source release and app Compose project.
+- `/srv/study-timer/releases/<commit>`: immutable source releases and revision-tagged Docker images.
 - `/srv/study-timer/data`: persistent SQLite database, owned by container UID 1000.
 - `/srv/web-proxy`: shared Caddy Compose project and Caddyfile.
 - Docker network `web`: proxy-to-app communication. Each future app needs a unique network alias.
@@ -20,24 +21,49 @@ Use DNS-only initially; do not add an AAAA record containing an IPv6 `/64` prefi
 Caddy obtains and renews the origin TLS certificate automatically once DNS resolves and ports 80/443 are reachable.
 If Cloudflare proxying is later enabled, use SSL/TLS mode **Full (strict)**.
 
-## Update an existing deployment
+## Automatic deployments
 
-Push the intended source changes to GitHub first. On the server, back up the live database,
-update the source, then rebuild and check the container:
+Push to `main`. The `Validate for VPS deployment` GitHub Actions workflow runs tests,
+TypeScript checks, the frontend build, a dependency audit, deployment-controller checks,
+and a production Docker build on a GitHub-hosted runner. It has read-only repository permissions.
+Vercel automatic deployment stays disabled.
+
+The VPS `study-timer-deploy.timer` checks the public workflow result every two minutes.
+Only a successful run for this repository's current `main` commit can deploy. Pull requests,
+forks, failed runs, and older successful commits cannot deploy. The server downloads that exact
+commit, builds it while the existing app stays up, backs up the live database, starts the new
+container, and verifies health before updating the active release symlink. A failed container
+startup restores the previous application image. Database snapshots are preserved; database
+rollback is manual because automatically replacing data could lose user writes. Schema changes
+must remain backward compatible with the previous application for image rollback to work.
+
+This pull deployment uses public GitHub APIs and does not need an SSH key, GitHub token,
+public deployment webhook, or self-hosted GitHub runner. Keep the repository public; making it
+private requires adding appropriate read credentials to the server. GitHub outages or API rate
+limits delay deployments; the existing app remains up. Failed deployments retry after 10 minutes.
+GitHub Actions shows validation status; final deployment status is in the server journal and
+`/srv/study-timer/DEPLOYED_REVISION`.
+
+Check or pause automatic deployment:
 
 ```sh
-cd /srv/study-timer/app
-docker compose exec -T app node server/backup.mjs
-# Update the source from the reviewed GitHub revision or upload a clean source archive.
-# Never upload .env files, .data, node_modules, or local database files over production data.
-docker compose up -d --build --wait
-curl --fail http://127.0.0.1:3001/api/health
-docker compose logs --tail=50
+systemctl status study-timer-deploy.timer
+journalctl -u study-timer-deploy.service -n 100
+cat /srv/study-timer/DEPLOYED_REVISION
+systemctl stop study-timer-deploy.timer
+# Resume with: systemctl start study-timer-deploy.timer
 ```
 
-The initial deployment uses an archive of the tested local workspace, including changes that
-were not previously in GitHub. It is not a Git checkout on the server. Subsequent source uploads
-must exclude `deploy/` changes from the live proxy unless those changes are intentional.
+The controller is installed at `/usr/local/lib/study-timer/autodeploy.py`. Changes to the
+controller or systemd units must be reviewed and installed separately; ordinary app updates
+deploy automatically. Keep `/srv/study-timer/data` and `/srv/web-proxy` outside source releases.
+Never upload local databases over production data. Monitor disk usage and retain any image
+needed for rollback before pruning older releases and Docker build cache.
+
+Optional production overrides live in `/srv/study-timer/production.env` (private, root-owned).
+`REGISTRATION_ENABLED` defaults to `false`. Password recovery email delivery is not configured
+in production; administrators can still reset passwords. This deployment does not activate
+local-only password-reset mail files or change existing users' passwords.
 
 ## Backups and recovery
 

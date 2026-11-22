@@ -1,6 +1,7 @@
 name: study-timer
 services:
   app:
+    image: study-timer-app:${DEPLOY_REVISION:-local}
     build: .
     restart: unless-stopped
     init: true
@@ -11,6 +12,7 @@ services:
       TRUST_PROXY: '1'
       APP_ORIGIN: https://studytimer.snlynnoo.dev
       DATABASE_PATH: /app/.data/study-timer.sqlite
+      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-false}
     ports:
       - '127.0.0.1:3001:3000'
     volumes:

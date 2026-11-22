@@ -1,0 +1,11 @@
+[Unit]
+Description=Deploy Study Timer after successful GitHub Actions checks
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/study-timer/autodeploy.py
+TimeoutStartSec=20min
+UMask=0077

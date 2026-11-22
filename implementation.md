@@ -150,3 +150,34 @@ npm run build
 Follow `AGENTS.md` when modifying components: declare `useState` hooks first and preserve exactly-once timer completion with immediate mode transition. Keep timer rules in the pure state machine and extend behavior tests when changing them. Use explicit column lists for session inserts so additive migrations remain compatible.
 
 For backup/restore and operational limitations, see [documentation.md](documentation.md). Static frontend hosting alone is insufficient: the current app needs its Node API and persistent SQLite file.
+
+## Self-registration and account lifecycle
+
+`server/registration.ts` implements `GET /api/auth/register/challenge` and `POST /api/auth/register`. `src/lib/registration.worker.ts` solves a SHA-256 puzzle off the main thread; the server independently verifies four leading hexadecimal zeroes for `challengeId:nonce`. Challenges are random, IP-bound, single-use, expire in ten minutes, and require a minimum two-second age. The hidden `website` field must be empty. Persistent `registration_limits` counters enforce per-IP and global hourly quotas, and `registration_challenges` stores challenge issuance/expiry. Verification happens before expensive scrypt work; registration hashing concurrency is capped at two.
+
+Registration defaults to enabled locally after an active administrator has completed setup, and disabled when `NODE_ENV=production`. `REGISTRATION_ENABLED` explicitly overrides this. Accounts always receive the `user` role. Duplicate emails do not modify existing users. This version does not verify email ownership. Proof of work is an automation-cost control, not human verification; public release needs a review of distributed abuse and email delivery/verification.
+
+`users` now includes `is_active` (default 1) and nullable `deleted_at`, added through compatible startup migrations. Authentication rejects inactive/deleted accounts. Administrator endpoints are `PATCH /api/users/:id` with `{ is_active }`, `DELETE /api/users/:id` for recoverable deletion, and `POST /api/users/:id/restore`. `GET /api/users?include_deleted=true` includes deleted accounts. Deactivation/deletion transactionally revoke authentication and recovery tokens. Restore leaves the account inactive. Self-deactivation and self-deletion are rejected on the server; existing user data and email uniqueness are preserved.
+
+## Self-service password recovery
+
+`server/recovery.ts` implements `POST /api/auth/forgot-password` with `{ email }` and `POST /api/auth/reset-password` with `{ token, password }`. `PasswordRecoveryView.tsx` renders request and completion forms. Reset links use a fragment (`#reset-password=...`), so the token is not sent in the initial page request. The UI removes the fragment from browser history after reading it and can open recovery even if an existing sign-in cookie is present.
+
+Tokens are 32 random bytes, stored only as SHA-256 hashes in `password_reset_tokens`, expire in 30 minutes, and are rechecked/consumed transactionally after password hashing. Success changes the password, deletes all reset tokens for that user, and revokes every local sign-in. Inactive/deleted accounts cannot recover access through this flow. Administrator resets also revoke recovery tokens.
+
+Local delivery writes mode-0600 plaintext messages inside a mode-0700 `.data/password-reset-mail` directory, overridable with `RESET_MAIL_DIR`. API responses never include the token and return the same request message for known and unknown emails. Persistent hourly quotas cap global/IP requests and per-email delivery; reset hashing concurrency is capped at two. Production recovery requests return 503 until a real email transport is implemented. No SMTP credentials are required for local tests, and no emails are sent externally.
+
+The local development workflow includes no automatic deployment. VPS release remains a separate owner-requested step. Tests cover registration privilege enforcement, replay/expiry/spam/rate limits, token hashing and revocation, and account activation/deletion/restore.
+
+## Feedback
+
+Self-registration also transactionally inserts a monotonic event into `registration_events`. `registration_seen` stores each administrator's acknowledged event ID. `GET /api/users/registrations` returns the unseen count; administrator-only `POST /api/users/registrations/seen` accepts `{ through_id }` and advances that marker monotonically. User-list rows include their registration event ID so acknowledgment covers the fetched list without swallowing registrations that arrived after the fetch. Deleted users are excluded from the count. No events are backfilled for imported or manually added accounts. The Users badge refreshes every 30 seconds and on window focus; opening the list acknowledges its snapshot.
+
+`FeedbackView.tsx` renders a composer for ordinary users and an inbox for administrators. Navigation appears immediately after Settings. The server stores messages in `feedback` with `id`, authenticated `user_id`, `subject`, `message`, `created_at`, and nullable `read_at`. Indexes support inbox ordering and per-user submission quotas. Sender names/emails are joined from `users` for administrator responses; client-supplied sender identity and read status are ignored on submission.
+
+- `POST /api/feedback`: authenticated submission with `{ subject, message }`; trims values, requires nonblank text, limits lengths to 200/5,000 characters, and caps successful submissions at ten per account per rolling hour.
+- `GET /api/feedback?page=1`: administrator-only inbox with 50 messages per page, total and unread counts, newest first with ID as a stable ordering tie-breaker.
+- `GET /api/feedback/unread-count`: administrator-only lightweight unread total for the sidebar badge, polled every 30 seconds and on window focus. Inbox fetches also update the badge; request sequencing prevents an older poll from overwriting a newer inbox count.
+- `PATCH /api/feedback/:id`: administrator-only `{ read: boolean }` update. Read status is shared across administrators.
+
+The composer clears only after a successful save; errors preserve the draft while the page stays open. React renders feedback as plain text, preserving line breaks without interpreting HTML. Inbox fetches ignore late responses after navigation. Feedback remains associated with recoverably deleted users, whose database rows are retained. No external mail transport is used. Integration tests cover authorization, forged sender fields, validation, limits, pagination, read status, inactive accounts, and persistence.
