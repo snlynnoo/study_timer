@@ -258,6 +258,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 @media(max-width:700px){.guide-steps {grid-template-columns:minmax(0,1fr)}.guide-step:last-child {grid-column:auto}.guide-step {padding:22px}.guide-heading h1 {font-size:1.5rem}.daily-metrics strong.spaced-duration {gap:8px}.spaced-duration>span {gap:4px}.session-durations {justify-content:flex-start}.recent-row .session-durations {margin-left:42px}.long-break-dialog {padding:28px 22px}.session-history .break-duration-tag {margin-left:0}}
 .recent-row>.session-durations {flex:0 1 auto}
 .auth-mode-switch {color:var(--palette-blue);font-weight:650;text-decoration:underline;text-underline-offset:3px}
+.auth-account-button {display:block;width:100%;margin-top:10px;padding:12px 18px;background:var(--palette-blue-soft);color:var(--palette-blue);border:1px solid #bacbe5;border-radius:10px;font-size:1rem;font-weight:650;line-height:1.5}
+.auth-account-button:hover {background:#dae5f5}.auth-account-button:focus-visible {outline:2px solid var(--palette-blue);outline-offset:3px}.auth-account-button:disabled {opacity:.6;cursor:default}
 .intention-card .task-details-prompt {font-size:.9375rem;line-height:1.6;padding:12px;border-radius:9px;background:var(--palette-orange-soft);color:#71480f;margin:0 0 18px}
 .intention-card .task-field-error {color:var(--palette-rust);font-size:.875rem;line-height:1.5;margin:6px 0 19px}
 .intention-card .task-field-error:last-child {margin-bottom:0}

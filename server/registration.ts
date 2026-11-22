@@ -64,7 +64,7 @@ export function createRegistrationRouter(db:Database, options:{
         const passwordHash=await options.hashPassword(password);
         // Use the same response for duplicates without changing any existing account or password.
         if(db.prepare('SELECT 1 FROM users WHERE email=?').get(email.trim().toLowerCase())) {
-          res.status(409).json({error:'Unable to create this account. Try signing in or contact your administrator.'});return;
+          res.status(409).json({error:'This email is already registered. Sign in or use Forgot password? to set a new password. If your account is inactive, contact your administrator.'});return;
         }
         const id=randomUUID();
         db.exec('BEGIN IMMEDIATE');
