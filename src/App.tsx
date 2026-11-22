@@ -160,7 +160,7 @@ export default function App() {
       setLastSyncStatus(null);
       await api('/sessions', {method:'POST',body:JSON.stringify({
         date:session.date,start_time:session.startTime,end_time:session.endTime,
-        duration:session.duration,main_task:session.mainTask,topic:session.topic,
+        duration:session.duration,main_task:session.mainTask,topic:session.topic,break_seconds:session.breakSeconds,
       })});
       setLastSyncStatus("success");
       await fetchSessions(user.id);
@@ -253,13 +253,16 @@ export default function App() {
       if (updates.duration !== undefined) dbUpdates.duration = updates.duration;
       if (updates.mainTask !== undefined) dbUpdates.main_task = updates.mainTask;
       if (updates.topic !== undefined) dbUpdates.topic = updates.topic;
+      if (updates.breakSeconds !== undefined) dbUpdates.break_seconds = updates.breakSeconds;
 
       await api(`/sessions/${id}`, {method:"PATCH",body:JSON.stringify(dbUpdates)});
       setLastSyncStatus("success");
       if (user) await fetchSessions(user.id);
+      return true;
     } catch (err: any) {
       console.error("Error updating session:", err);
       setError("Failed to update session.");
+      return false;
     }
   };
 

@@ -2,18 +2,24 @@ import React, { useState } from "react";
 import { Trash2, Calendar, Clock, Tag, Edit2, Check, X } from "lucide-react";
 import { Session } from "../types";
 import BreakDuration from "./BreakDuration";
+import {parseBreakMinutes} from '../lib/breakMinutes';
+import TimeInput from './TimeInput';
+import {durationBetween,isValidTime} from '../lib/timeInput';
 import { format, parseISO } from "date-fns";
 
 interface SessionListProps {
   sessions: Session[];
   onDelete: (id: string) => void;
-  onUpdate: (id: string, updates: Partial<Session>) => void;
+  onUpdate: (id: string, updates: Partial<Session>) => Promise<boolean>;
   isDarkMode?: boolean;
 }
 
 export default function SessionList({ sessions, onDelete, onUpdate, isDarkMode }: SessionListProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Partial<Session>>({});
+  const [breakMinutes,setBreakMinutes]=useState('');
+  const [editError,setEditError]=useState('');
+  const [saving,setSaving]=useState(false);
 
   const sortedSessions = [...sessions].sort((a, b) => {
     return new Date(b.date + "T" + b.startTime).getTime() - new Date(a.date + "T" + a.startTime).getTime();
@@ -21,6 +27,8 @@ export default function SessionList({ sessions, onDelete, onUpdate, isDarkMode }
 
   const handleStartEdit = (session: Session) => {
     setEditingId(session.id || null);
+    setBreakMinutes(session.breakSeconds==null?'':String(Number((session.breakSeconds/60).toFixed(2))));
+    setEditError('');
     setEditValues({
       mainTask: session.mainTask,
       topic: session.topic,
@@ -31,34 +39,25 @@ export default function SessionList({ sessions, onDelete, onUpdate, isDarkMode }
     });
   };
 
-  const calculateDuration = (start: string, end: string) => {
-    try {
-      const startParts = start.split(":").map(Number);
-      const endParts = end.split(":").map(Number);
-      if (startParts.length !== 2 || endParts.length !== 2) return 0;
-      
-      let startTotal = startParts[0] * 60 + startParts[1];
-      let endTotal = endParts[0] * 60 + endParts[1];
-      
-      if (endTotal < startTotal) endTotal += 1440; // 24 hours
-      return endTotal - startTotal;
-    } catch (e) {
-      return 0;
-    }
-  };
-
-  const handleSave = (id: string) => {
-    onUpdate(id, editValues);
-    setEditingId(null);
+  const handleSave = async(id: string) => {
+    setEditError('');
+    if(!isValidTime(editValues.startTime||'')||!isValidTime(editValues.endTime||'')){setEditError('Enter valid start and end times in 24-hour format.');return;}
+    let seconds:number|null;
+    try{seconds=parseBreakMinutes(breakMinutes);}catch(error:any){setEditError(error.message);return;}
+    setSaving(true);
+    try{
+      if(await onUpdate(id,{...editValues,breakSeconds:seconds}))setEditingId(null);
+      else setEditError('Could not save this session. Please try again.');
+    }catch{setEditError('Could not save this session. Please try again.');}finally{setSaving(false);}
   };
 
   const updateEditStartTime = (val: string) => {
-    const duration = calculateDuration(val, editValues.endTime || "");
+    const duration = durationBetween(val, editValues.endTime || "");
     setEditValues(prev => ({ ...prev, startTime: val, duration }));
   };
 
   const updateEditEndTime = (val: string) => {
-    const duration = calculateDuration(editValues.startTime || "", val);
+    const duration = durationBetween(editValues.startTime || "", val);
     setEditValues(prev => ({ ...prev, endTime: val, duration }));
   };
 
@@ -80,24 +79,32 @@ export default function SessionList({ sessions, onDelete, onUpdate, isDarkMode }
             >
               <div className="flex flex-wrap items-center gap-4 md:gap-8 flex-1">
                 {editingId === session.id ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold uppercase text-gray-400">Task & Topic</label>
+                  <div className="session-editor grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+                    <div className="session-edit-column">
+                      <div>
+                      <label htmlFor={`edit-task-${session.id}`} className="session-inline-label">Main Task / Topic</label>
                       <input 
+                        id={`edit-task-${session.id}`}
                         type="text" 
                         value={editValues.mainTask} 
                         onChange={e => setEditValues(prev => ({ ...prev, mainTask: e.target.value }))}
                         className={`w-full px-3 py-1 rounded-lg border text-sm ${isDarkMode ? "bg-white/5 border-white/10 text-white" : "bg-white border-gray-200"}`}
                       />
+                      </div>
+                      <div>
+                      <label htmlFor={`edit-topic-${session.id}`} className="session-inline-label">Sub-Task / Topic</label>
                       <input 
+                        id={`edit-topic-${session.id}`}
                         type="text" 
                         value={editValues.topic} 
                         onChange={e => setEditValues(prev => ({ ...prev, topic: e.target.value }))}
-                        className={`w-full px-3 py-1 rounded-lg border text-sm mt-1 ${isDarkMode ? "bg-white/5 border-white/10 text-white" : "bg-white border-gray-200"}`}
+                        className={`w-full px-3 py-1 rounded-lg border text-sm ${isDarkMode ? "bg-white/5 border-white/10 text-white" : "bg-white border-gray-200"}`}
                       />
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold uppercase text-gray-400">Date & Duration (m)</label>
+                    <div className="session-edit-column">
+                      <div>
+                      <label className="session-inline-label">Date & duration (min)</label>
                       <div className="flex gap-2">
                         <input 
                           type="date" 
@@ -112,25 +119,23 @@ export default function SessionList({ sessions, onDelete, onUpdate, isDarkMode }
                           className={`w-20 px-3 py-1 rounded-lg border text-sm cursor-not-allowed ${isDarkMode ? "bg-white/5 border-white/10 text-white/50" : "bg-gray-50 border-gray-200 text-gray-400"}`}
                         />
                       </div>
-                      <div className="grid grid-cols-2 gap-2 mt-1">
-                        <input 
-                          type="text" 
-                          placeholder="HH:mm"
-                          pattern="[0-9]{2}:[0-9]{2}"
-                          value={editValues.startTime} 
-                          onChange={e => updateEditStartTime(e.target.value)}
-                          className={`w-full px-3 py-1 rounded-lg border text-sm ${isDarkMode ? "bg-white/10 border-white/20 text-white" : "bg-white border-gray-300"}`}
-                        />
-                        <input 
-                          type="text" 
-                          placeholder="HH:mm"
-                          pattern="[0-9]{2}:[0-9]{2}"
-                          value={editValues.endTime} 
-                          onChange={e => updateEditEndTime(e.target.value)}
-                          className={`w-full px-3 py-1 rounded-lg border text-sm ${isDarkMode ? "bg-white/10 border-white/20 text-white" : "bg-white border-gray-300"}`}
-                        />
+                      </div>
+                      <div className="session-time-break-row">
+                        <div className="session-edit-time-range">
+                          <label className="session-inline-label">Time range</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <TimeInput compact label="Start time" value={editValues.startTime||':'} onChange={updateEditStartTime}/>
+                            <TimeInput compact label="End time" value={editValues.endTime||':'} onChange={updateEditEndTime}/>
+                          </div>
+                        </div>
+                        <div className="session-edit-break">
+                          <label htmlFor={`break-${session.id}`} className="session-inline-label">Break (min)</label>
+                          <input id={`break-${session.id}`} aria-label="Break time (minutes)" type="number" min="0" max="10080" step="any" value={breakMinutes} onChange={e=>setBreakMinutes(e.target.value)} placeholder="Unknown" className={`w-full px-3 py-1 rounded-lg border text-sm ${isDarkMode ? 'bg-white/10 border-white/20 text-white' : 'bg-white border-gray-300'}`} aria-describedby={`break-help-${session.id}`}/>
+                          <p id={`break-help-${session.id}`} className="sr-only">Leave blank if unknown.</p>
+                        </div>
                       </div>
                     </div>
+                    {editError&&<p role="alert" className="session-edit-error">{editError}</p>}
                   </div>
                 ) : (
                   <>
@@ -159,13 +164,15 @@ export default function SessionList({ sessions, onDelete, onUpdate, isDarkMode }
                 {editingId === session.id ? (
                   <>
                     <button
+                      disabled={saving}
                       onClick={() => handleSave(session.id!)}
                       className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors"
-                      title="Save"
+                      title={saving?'Saving…':'Save'}
                     >
                       <Check className="w-5 h-5" />
                     </button>
                     <button
+                      disabled={saving}
                       onClick={() => setEditingId(null)}
                       className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg transition-colors"
                       title="Cancel"
@@ -176,6 +183,7 @@ export default function SessionList({ sessions, onDelete, onUpdate, isDarkMode }
                 ) : (
                   <>
                     <button
+                      disabled={saving}
                       onClick={() => handleStartEdit(session)}
                       className="p-2 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg transition-colors"
                       title="Edit"

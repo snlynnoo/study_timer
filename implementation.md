@@ -181,3 +181,13 @@ Self-registration also transactionally inserts a monotonic event into `registrat
 - `PATCH /api/feedback/:id`: administrator-only `{ read: boolean }` update. Read status is shared across administrators.
 
 The composer clears only after a successful save; errors preserve the draft while the page stays open. React renders feedback as plain text, preserving line breaks without interpreting HTML. Inbox fetches ignore late responses after navigation. Feedback remains associated with recoverably deleted users, whose database rows are retained. No external mail transport is used. Integration tests cover authorization, forged sender fields, validation, limits, pagination, read status, inactive accounts, and persistence.
+
+
+## Manual break editing and ranked distribution
+
+Session creation and `PATCH /api/sessions/:id` accept optional `break_seconds`: null for unknown or an integer from 0 to 604,800. Omission preserves existing values on update. Manual patches replace the total (allowing corrections downward); automatic `PUT /api/sessions/:id/break` checkpoints retain their monotonic maximum behavior. Both routes enforce account ownership. `src/lib/breakMinutes.ts` converts optional minute input to nullable integer seconds. History awaits save confirmation before closing an edit and retains the draft on failure.
+
+`src/lib/distribution.ts` groups trimmed task/topic names case-insensitively and sorts total focus minutes in either direction, with a name tie-breaker. Dashboard renders every category as a horizontal bar row with its time and share of the filtered total. Bar lengths scale to the largest category, while percentage labels use the full selected total. A keyboard-focusable scrolling region handles large lists. Existing date/activity filters apply to these rows. Calendar date badges count only unfinished tasks and use a checkmark when all are complete.
+
+
+`TimeInput.tsx` shares fixed-colon hour/minute controls between History editing and Insert Session. The separator is a separate non-editable element. Segments accept digits, advance from two-digit hours to minutes, pad single digits on blur, and support validated numeric or HH:mm paste. `src/lib/timeInput.ts` validates complete 24-hour values and calculates duration across midnight; incomplete input never produces NaN or saves a malformed time.

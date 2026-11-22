@@ -8,8 +8,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  PieChart,
-  Pie,
   Cell,
 } from "recharts";
 import {
@@ -33,7 +31,8 @@ import {
 } from "date-fns";
 import { Session } from "../types";
 import { PALETTE } from "../lib/palette";
-import { LayoutGrid, Calendar, Clock, BookOpen, ChevronDown } from "lucide-react";
+import {buildDistribution} from '../lib/distribution';
+import { LayoutGrid, Calendar, Clock, BookOpen, ChevronDown,ArrowDownWideNarrow,ArrowUpNarrowWide } from "lucide-react";
 
 interface DashboardProps {
   sessions: Session[];
@@ -41,7 +40,7 @@ interface DashboardProps {
 }
 
 type TimeRange = "daily" | "weekly" | "monthly" | "yearly" | "custom";
-type PieChartMode = "mainTask" | "topic";
+type DistributionMode = "mainTask" | "topic";
 
 interface SummaryItem {
   mainTask: string;
@@ -53,8 +52,9 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
   const [timeRange, setTimeRange] = useState<TimeRange>("daily");
   const [customStartDate, setCustomStartDate] = useState<string>(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [customEndDate, setCustomEndDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
-  const [pieChartMode, setPieChartMode] = useState<PieChartMode>("topic");
+  const [distributionMode, setDistributionMode] = useState<DistributionMode>("topic");
   const [selectedBar, setSelectedBar] = useState<string | null>(null);
+  const [distributionOrder,setDistributionOrder]=useState<"asc"|"desc">("desc");
 
   const formatDuration = (totalMinutes: number) => {
     const h = Math.floor(totalMinutes / 60);
@@ -225,25 +225,13 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
 
   const summaryData = (Object.values(summaryMap) as SummaryItem[]).sort((a, b) => b.duration - a.duration);
 
-  const pieDataMap = interactivelyFilteredSessions.reduce((acc: Record<string, number>, s: Session) => {
-    const rawValue = pieChartMode === "mainTask" ? s.mainTask : s.topic;
-    const key = (rawValue || "").trim();
-    acc[key] = (acc[key] || 0) + s.duration;
-    return acc;
-  }, {});
-
-  const pieData = Object.entries(pieDataMap).map(([name, value]: [string, number]) => ({
-    name,
-    value: parseFloat((value / 60).toFixed(2)),
-    rawMinutes: value
-  }));
-
-  const COLORS = [PALETTE.blue, PALETTE.teal, PALETTE.orange, PALETTE.olive, PALETTE.rust];
+  const distributionData=buildDistribution(interactivelyFilteredSessions,distributionMode,distributionOrder);
+  const maxDistributionMinutes=Math.max(0,...distributionData.map(item=>item.minutes));
 
   const totalMinutes = interactivelyFilteredSessions.reduce((acc: number, s: Session) => acc + s.duration, 0);
   const totalHours = totalMinutes / 60;
   const sessionCount = interactivelyFilteredSessions.length;
-  const uniqueTopics = Object.keys(pieDataMap).length;
+  const uniqueTopics = distributionData.length;
 
   const handleChartClick = (state: any) => {
     if (state && state.activeLabel) {
@@ -261,38 +249,6 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
        timeRange === "monthly" ? "This Month" :
        timeRange === "yearly" ? "This Year" :
        `${format(parsedCustomStart, "MMM d")} - ${format(parsedCustomEnd, "MMM d")}`);
-
-  const renderCustomizedPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, name }: any) => {
-    const RADIAN = Math.PI / 180;
-    const radius = outerRadius * 1.3;
-    const x = cx + radius * Math.cos(-midAngle * RADIAN);
-    const y = cy + radius * Math.sin(-midAngle * RADIAN);
-
-    const isLeft = x < cx;
-
-    return (
-      <text
-        x={x}
-        y={y}
-        fill={isDarkMode ? "#ffffff" : "#1f2937"}
-        textAnchor={isLeft ? "end" : "start"}
-        className="text-xs font-bold"
-      >
-        <tspan x={x} dy="-0.2em">
-          {name.length > 20 ? name.substring(0, 18) + "..." : name}
-        </tspan>
-        <tspan
-          x={x}
-          dy="1.4em"
-          fill={isDarkMode ? "rgba(255,255,255,0.8)" : "rgba(0,0,0,0.7)"}
-          fontSize="0.875rem"
-          fontWeight="bold"
-        >
-          {`${(percent * 100).toFixed(1)}%`}
-        </tspan>
-      </text>
-    );
-  };
 
   return (
     <div className="stats-page w-full max-w-6xl mt-6 space-y-8">
@@ -358,7 +314,7 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard title={`${timeRange} Time`} value={formatDuration(totalMinutes)} icon={<Clock className="w-5 h-5" />} isDarkMode={isDarkMode} />
         <StatCard title="Sessions" value={sessionCount.toString()} icon={<LayoutGrid className="w-5 h-5" />} isDarkMode={isDarkMode} />
-        <StatCard title={pieChartMode === "mainTask" ? "Main Tasks" : "Topics"} value={uniqueTopics.toString()} icon={<BookOpen className="w-5 h-5" />} isDarkMode={isDarkMode} />
+        <StatCard title={distributionMode === "mainTask" ? "Main" : "Sub"} value={uniqueTopics.toString()} icon={<BookOpen className="w-5 h-5" />} isDarkMode={isDarkMode} />
         <StatCard title="Avg Session" value={sessionCount ? `${(totalHours / sessionCount * 60).toFixed(0)}m` : "0m"} icon={<Calendar className="w-5 h-5" />} isDarkMode={isDarkMode} />
       </div>
 
@@ -414,73 +370,30 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
           <p className="text-xs text-gray-500 mt-4 text-center">Click on a bar to filter summary & distribution below</p>
         </div>
 
-        {/* Topic Distribution Chart */}
-        <div className={`p-6 rounded-3xl shadow-xl border ${isDarkMode ? "bg-white/10 border-white/10" : "bg-gray-50 border-gray-100"}`}>
-          <div className="flex items-center justify-between mb-6">
-            <h3 className={`text-lg font-semibold ${isDarkMode ? "text-white" : "text-gray-800"}`}>Distribution</h3>
-            <div className={`flex p-1 rounded-xl border relative z-10 ${isDarkMode ? "bg-white/10 border-white/20" : "bg-gray-200 border-gray-300"}`}>
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setPieChartMode("mainTask");
-                }}
-                className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer relative z-20 ${
-                  pieChartMode === "mainTask"
-                    ? "bg-white text-gray-900 shadow-lg"
-                    : (isDarkMode ? "text-white/80 hover:text-white" : "text-gray-900/70 hover:text-gray-900")
-                }`}
-              >
-                Task
+        {/* Horizontal distribution, one readable row per category. */}
+        <section className={`distribution-panel p-6 rounded-3xl shadow-xl border ${isDarkMode ? "bg-white/10 border-white/10" : "bg-gray-50 border-gray-100"}`} aria-labelledby="distribution-heading">
+          <div className="distribution-heading">
+            <h3 id="distribution-heading" className="text-lg font-semibold">Distribution</h3>
+            <div className="distribution-controls">
+              <button type="button" className="distribution-sort-toggle" aria-label={distributionOrder==='asc'?'Sort descending':'Sort ascending'} title={`${distributionOrder==='asc'?'Ascending':'Descending'} by focus time. Click to reverse.`} onClick={()=>setDistributionOrder(order=>order==='asc'?'desc':'asc')}>
+                {distributionOrder==='asc'?<ArrowUpNarrowWide size={18}/>:<ArrowDownWideNarrow size={18}/>}
               </button>
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setPieChartMode("topic");
-                }}
-                className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer relative z-20 ${
-                  pieChartMode === "topic"
-                    ? "bg-white text-gray-900 shadow-lg"
-                    : (isDarkMode ? "text-white/80 hover:text-white" : "text-gray-900/70 hover:text-gray-900")
-                }`}
-              >
-                Topic
-              </button>
+              <div className="distribution-mode" role="group" aria-label="Distribution categories">
+                <button type="button" aria-pressed={distributionMode==='mainTask'} onClick={()=>setDistributionMode('mainTask')}>Main</button>
+                <button type="button" aria-pressed={distributionMode==='topic'} onClick={()=>setDistributionMode('topic')}>Sub</button>
+              </div>
             </div>
           </div>
-          <div className="h-64 w-full mt-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={70}
-                  outerRadius={100}
-                  paddingAngle={5}
-                  dataKey="value"
-                  label={renderCustomizedPieLabel}
-                  labelLine={true}
-                >
-                  {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    borderRadius: "12px",
-                    border: "none",
-                    boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)",
-                    backgroundColor: isDarkMode ? "#1e293b" : "#ffffff",
-                    color: isDarkMode ? "#ffffff" : "#000000"
-                  }}
-                  formatter={(value: any, name: any, props: any) => [formatDuration(props.payload.rawMinutes), name]}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+          {distributionData.length?<div className="distribution-scroll" tabIndex={0} role="region" aria-label={`${distributionMode==='mainTask'?'Main':'Sub'} distribution, ${distributionOrder==='asc'?'ascending':'descending'} by focus time`}>
+            <ol className="distribution-rows">{distributionData.map(item=>{
+              const percent=totalMinutes>0?item.minutes/totalMinutes*100:0;
+              return <li key={item.name} className="distribution-row">
+                <div className="distribution-row-caption"><span>{item.name}</span><strong>{formatDuration(item.minutes)} <small>({percent.toFixed(1)}%)</small></strong></div>
+                <div className="distribution-track" aria-hidden="true"><span style={{width:`${maxDistributionMinutes>0?item.minutes/maxDistributionMinutes*100:0}%`}}/></div>
+              </li>;
+            })}</ol>
+          </div>:<p className="distribution-empty">No study data available for this selection.</p>}
+        </section>
 
         {/* Summary Table */}
         <div className={`col-span-1 md:col-span-2 p-6 rounded-3xl shadow-xl border overflow-hidden ${isDarkMode ? "bg-white/10 border-white/10" : "bg-gray-50 border-gray-100"}`}>

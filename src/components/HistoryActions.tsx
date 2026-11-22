@@ -3,6 +3,9 @@ import { X, Plus, Download, Calendar as CalendarIcon, Clock, Tag, BookOpen, Chec
 import { motion, AnimatePresence } from "motion/react";
 import { Session } from "../types";
 import { format, parseISO, isWithinInterval, startOfDay, endOfDay } from "date-fns";
+import {parseBreakMinutes} from '../lib/breakMinutes';
+import TimeInput from './TimeInput';
+import {durationBetween,isValidTime} from '../lib/timeInput';
 
 interface HistoryActionsProps {
   sessions: Session[];
@@ -13,6 +16,9 @@ interface HistoryActionsProps {
 export default function HistoryActions({ sessions, onInsert, isDarkMode }: HistoryActionsProps) {
   const [isInsertOpen, setIsInsertOpen] = useState(false);
   const [isDownloadOpen, setIsDownloadOpen] = useState(false);
+  const [breakMinutes,setBreakMinutes]=useState('');
+  const [insertError,setInsertError]=useState('');
+  const [inserting,setInserting]=useState(false);
   
   // Insert Form State
   const [newSession, setNewSession] = useState({
@@ -30,36 +36,28 @@ export default function HistoryActions({ sessions, onInsert, isDarkMode }: Histo
     to: format(new Date(), "yyyy-MM-dd")
   });
 
-  const calculateDuration = (start: string, end: string) => {
-    try {
-      const startParts = start.split(":").map(Number);
-      const endParts = end.split(":").map(Number);
-      if (startParts.length !== 2 || endParts.length !== 2) return 0;
-      
-      let startTotal = startParts[0] * 60 + startParts[1];
-      let endTotal = endParts[0] * 60 + endParts[1];
-      
-      if (endTotal < startTotal) endTotal += 1440; // 24 hours
-      return endTotal - startTotal;
-    } catch (e) {
-      return 0;
-    }
-  };
-
   const updateStartTime = (val: string) => {
-    const duration = calculateDuration(val, newSession.endTime);
+    const duration = durationBetween(val, newSession.endTime);
     setNewSession({ ...newSession, startTime: val, duration });
   };
 
   const updateEndTime = (val: string) => {
-    const duration = calculateDuration(newSession.startTime, val);
+    const duration = durationBetween(newSession.startTime, val);
     setNewSession({ ...newSession, endTime: val, duration });
   };
 
   const handleInsert = async (e: React.FormEvent) => {
     e.preventDefault();
-    const success = await onInsert(newSession);
+    setInsertError('');
+    if(!isValidTime(newSession.startTime)||!isValidTime(newSession.endTime)){setInsertError('Enter valid start and end times in 24-hour format.');return;}
+    let breakSeconds:number|null;
+    try{breakSeconds=parseBreakMinutes(breakMinutes);}catch(error:any){setInsertError(error.message);return;}
+    setInserting(true);
+    let success=false;
+    try{success=await onInsert({...newSession,breakSeconds});}catch{setInsertError('Could not save this session. Please try again.');}finally{setInserting(false);}
+    if(!success){setInsertError('Could not save this session. Please try again.');return;}
     if (success) {
+      setBreakMinutes('');
       setIsInsertOpen(false);
       setNewSession({
         date: format(new Date(), "yyyy-MM-dd"),
@@ -118,7 +116,7 @@ export default function HistoryActions({ sessions, onInsert, isDarkMode }: Histo
   return (
     <div className="history-actions w-full max-w-4xl flex gap-4 px-4 mb-2">
       <button
-        onClick={() => setIsInsertOpen(true)}
+        onClick={() => {setInsertError('');setIsInsertOpen(true);}}
         className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl font-bold transition-all shadow-lg active:scale-95 ${
           isDarkMode ? "bg-white/10 text-white hover:bg-white/20" : "bg-white text-gray-800 hover:bg-gray-50"
         }`}
@@ -163,6 +161,7 @@ export default function HistoryActions({ sessions, onInsert, isDarkMode }: Histo
               </div>
 
               <form onSubmit={handleInsert} className="space-y-6">
+                {insertError&&<p role="alert" className="session-edit-error">{insertError}</p>}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Left Column: Task Info */}
                   <div className="space-y-4">
@@ -232,40 +231,26 @@ export default function HistoryActions({ sessions, onInsert, isDarkMode }: Histo
                         <Clock className="w-3 h-3" /> Time Range (24h format)
                       </label>
                       <div className="grid grid-cols-2 gap-2">
-                        <input
-                          type="text"
-                          required
-                          placeholder="09:00"
-                          pattern="[0-9]{2}:[0-9]{2}"
-                          value={newSession.startTime}
-                          onChange={(e) => updateStartTime(e.target.value)}
-                          className={`w-full px-4 py-3 rounded-xl font-bold focus:outline-none focus:ring-2 transition-all ${
-                            isDarkMode ? "bg-white/10 border border-white/20 text-white focus:ring-white/30" : "bg-gray-100 border border-gray-300 focus:ring-gray-300"
-                          }`}
-                        />
-                        <input
-                          type="text"
-                          required
-                          placeholder="09:25"
-                          pattern="[0-9]{2}:[0-9]{2}"
-                          value={newSession.endTime}
-                          onChange={(e) => updateEndTime(e.target.value)}
-                          className={`w-full px-4 py-3 rounded-xl font-bold focus:outline-none focus:ring-2 transition-all ${
-                            isDarkMode ? "bg-white/10 border border-white/20 text-white focus:ring-white/30" : "bg-gray-100 border border-gray-300 focus:ring-gray-300"
-                          }`}
-                        />
+                        <TimeInput label="Start time" value={newSession.startTime} onChange={updateStartTime}/>
+                        <TimeInput label="End time" value={newSession.endTime} onChange={updateEndTime}/>
                       </div>
                     </div>
                   </div>
                 </div>
 
+                <div className="session-break-entry">
+                  <label htmlFor="insert-break-minutes" className="session-break-label">Break time (minutes)</label>
+                  <input id="insert-break-minutes" className="session-break-input" type="number" min="0" max="10080" step="any" value={breakMinutes} onChange={e=>setBreakMinutes(e.target.value)} placeholder="Unknown" aria-describedby="insert-break-help"/>
+                  <p id="insert-break-help" className="session-break-help">Leave blank if unknown.</p>
+                </div>
                 <div className="pt-2">
                   <button
                     type="submit"
+                    disabled={inserting}
                     className="w-full py-4 bg-gray-950 text-white rounded-2xl font-bold hover:bg-black transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2 group"
                   >
                     <Check className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                    Save Session
+                    {inserting?'Saving…':'Save Session'}
                   </button>
                 </div>
               </form>

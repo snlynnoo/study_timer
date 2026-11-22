@@ -123,11 +123,17 @@ Open **History** to review records:
 
 The CSV contains Date, Start time, End time, Main task, Topic, Duration (min), and Break (min). Unknown break duration exports as an empty field. CSV exports contain study records only; they are not full backups of accounts, tasks, or settings.
 
+Both **Insert Session** and the History edit form include **Break time (minutes)**. Decimal minutes are accepted and stored to the nearest second. Enter `0` for no break, or leave the field blank for unknown. Manual edits can correct a break duration upward or downward; saving other fields keeps the existing break duration. Failed edits stay open so you can retry.
+
+Start/end time controls keep the colon visible between separate hour/minute inputs, even when both are cleared. Type digits only; two hour digits advance to minutes. You can also paste `0930`, `930`, or `09:30`. Single digits are padded on leaving a segment, and saving requires a complete valid 24-hour time. Duration updates automatically, including sessions crossing midnight.
+
+Stats uses a horizontal distribution chart with a separate row for every category, showing focus time and its percentage of the selected total. Use **Main**/**Sub** to choose the grouping; the category-count KPI uses the same caption. The sort icon immediately before these buttons toggles ascending/descending focus time. Long category names wrap, and large lists scroll rather than hiding categories. Time-range and activity-chart filters also apply to the distribution.
+
 ## Plan tasks in To-do
 
 Open **To-do**, select a date, and use **Add task**. Tasks support a title, notes, a date, and completion status. Edit to update details or move a task to another date. The remove action asks for confirmation.
 
-Dates with tasks show a count below the date. Rust-colored pending indicators identify unfinished work; olive indicators identify dates whose tasks are all complete. Use the month arrows to browse and **Today** to return to the current date. Tasks are saved per account.
+Dates with unfinished tasks show only the number still to do below the date; completing a task reduces that number. Dates whose tasks are all complete show an olive checkmark without a count. Rust-colored pending indicators identify unfinished work. Use the month arrows to browse and **Today** to return to the current date. Tasks are saved per account.
 
 ## Send feedback and read the administrator inbox
 

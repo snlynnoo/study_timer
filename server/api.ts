@@ -48,6 +48,11 @@ const dateValue = (value: unknown) => {
   return date;
 };
 const dummyPasswordHash = await hashPassword(randomBytes(32).toString('hex'));
+const breakValue=(seconds:unknown):number|null=>{
+  if(seconds===null)return null;
+  if(typeof seconds!=='number'||!Number.isInteger(seconds)||seconds<0||seconds>604800)throw new HttpError(400,'Invalid break duration.');
+  return seconds;
+};
 
 export function createApi(db: Database, setupFile = path.resolve('.data/setup-code.txt')) {
   const api = express.Router();
@@ -205,13 +210,14 @@ export function createApi(db: Database, setupFile = path.resolve('.data/setup-co
   api.post('/sessions', route((req,res) => {
     if(req.body.owner_id!==undefined&&req.body.owner_id!==res.locals.user.id)throw new HttpError(403,'Account changed. Sign in to the original account to save this session.');
     const values=sessionValues(req.body), id=req.body.id??randomUUID();
+    const breakSeconds=req.body.break_seconds===undefined?(req.body.id?0:null):breakValue(req.body.break_seconds);
     if(typeof id!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))throw new HttpError(400,'Invalid session ID.');
     const existing=db.prepare('SELECT * FROM sessions WHERE id=?').get(id) as Row|undefined;
     if(existing){
       if(existing.user_id!==res.locals.user.id||[existing.date,existing.start_time,existing.end_time,existing.duration,existing.main_task,existing.topic].some((value,index)=>value!==values[index]))throw new HttpError(409,'A different session already uses this ID.');
       res.json({id});return;
     }
-    db.prepare('INSERT INTO sessions (id,user_id,date,start_time,end_time,duration,main_task,topic,created_at,updated_at,break_seconds) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(id,res.locals.user.id,...values,now(),now(),req.body.id?0:null);
+    db.prepare('INSERT INTO sessions (id,user_id,date,start_time,end_time,duration,main_task,topic,created_at,updated_at,break_seconds) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(id,res.locals.user.id,...values,now(),now(),breakSeconds);
     res.status(201).json({id});
   }));
   api.put('/sessions/:id/break', route((req,res)=>{
@@ -228,7 +234,8 @@ export function createApi(db: Database, setupFile = path.resolve('.data/setup-co
     const allowed=['date','start_time','end_time','duration','main_task','topic'];
     const body={...existing};
     for (const k of allowed) if (req.body[k] !== undefined) body[k]=req.body[k];
-    db.prepare('UPDATE sessions SET date=?,start_time=?,end_time=?,duration=?,main_task=?,topic=?,updated_at=? WHERE id=? AND user_id=?').run(...sessionValues(body),now(),req.params.id,res.locals.user.id);
+    const breakSeconds=req.body.break_seconds===undefined?existing.break_seconds:breakValue(req.body.break_seconds);
+    db.prepare('UPDATE sessions SET date=?,start_time=?,end_time=?,duration=?,main_task=?,topic=?,break_seconds=?,updated_at=? WHERE id=? AND user_id=?').run(...sessionValues(body),breakSeconds,now(),req.params.id,res.locals.user.id);
     res.json({ok:true});
   }));
   api.delete('/sessions/:id', route((req,res) => {

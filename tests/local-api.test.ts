@@ -115,6 +115,22 @@ test('local authentication, task CRUD, date validation, account isolation and pe
     assert.equal(storedSessions.length,2);
     assert.equal(storedSessions.find((row:any)=>row.id===saved.data.id).break_seconds,null);
     assert.equal(storedSessions.find((row:any)=>row.id===focusId).break_seconds,180);
+    // Manual break edits can reduce/reset a recorded total; omitted fields preserve it.
+    assert.equal((await call(`/sessions/${focusId}`,'PATCH',{break_seconds:90},member)).status,200);
+    assert.equal((await call(`/sessions/${focusId}`,'PATCH',{topic:'Updated break'},member)).status,200);
+    assert.equal((await call('/sessions','GET',undefined,member)).data.find((row:any)=>row.id===focusId).break_seconds,90);
+    assert.equal((await call(`/sessions/${focusId}`,'PATCH',{break_seconds:0},member)).status,200);
+    assert.equal((await call('/sessions','GET',undefined,member)).data.find((row:any)=>row.id===focusId).break_seconds,0);
+    assert.equal((await call(`/sessions/${focusId}`,'PATCH',{break_seconds:null},member)).status,200);
+    assert.equal((await call('/sessions','GET',undefined,member)).data.find((row:any)=>row.id===focusId).break_seconds,null);
+    assert.equal((await call(`/sessions/${focusId}`,'PATCH',{break_seconds:10},admin)).status,404);
+    for(const value of [-1,1.5,604801,'5'])assert.equal((await call(`/sessions/${focusId}`,'PATCH',{break_seconds:value},member)).status,400);
+    const manual=await call('/sessions','POST',{...session,break_seconds:150},member);
+    assert.equal(manual.status,201);
+    assert.equal((await call('/sessions','GET',undefined,member)).data.find((row:any)=>row.id===manual.data.id).break_seconds,150);
+    assert.equal((await call('/sessions','POST',{...session,break_seconds:-1},member)).status,400);
+    await call(`/sessions/${manual.data.id}`,'DELETE',{},member);
+    await call(`/sessions/${focusId}`,'PATCH',{break_seconds:180},member);
     const settings={timer:{work:25,shortBreak:5,longBreak:15,darkModeWhenRunning:false},theme:{work:'bg-indigo-900',shortBreak:'bg-yellow-400',longBreak:'bg-green-500'},sound:{enabled:true,type:'https://example.com/sound.mp3',volume:.5,repeatCount:1}};
     assert.equal((await call('/settings','PUT',settings,member)).status,200);
     assert.deepEqual((await call('/settings','GET',undefined,member)).data,settings);
