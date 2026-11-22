@@ -95,7 +95,10 @@ export default function AuthView({ onSuccess, fontSize, onFontSizeChange }: { on
         </>}
         <button className="auth-submit" disabled={loading || !setup || (register&&(!proof||checking))}>{loading ? 'Please wait…' : setup?.required ? 'Set password & get started' : register?'Create account':'Sign In'}<ArrowRight size={17}/></button>
       </form>
-      {!setup?.required && <div className="auth-help">{setup?.registrationEnabled&&<p>{register?'Already have an account?':'New here?'} <button type="button" disabled={loading} className="auth-mode-switch" onClick={changeMode}>{register?'Sign in':'Create an account'}</button></p>}<p className="auth-reset-note"><button type="button" disabled={loading} className="auth-mode-switch" onClick={()=>{stopCheck();setChecking(false);setProof(null);setPassword('');setConfirmPassword('');setRegister(false);setRecovery(true);}}>Forgot password?</button></p></div>}
+      {!setup?.required && <div className="auth-help">{setup?.registrationEnabled&&<>
+        <p>{register?'Already have an account?':"Don't have an account?"}</p>
+        <button type="button" disabled={loading} className="auth-account-button" onClick={changeMode}>{register?'Back to Sign In':'Sign Up'}</button>
+      </>}<p className="auth-reset-note"><button type="button" disabled={loading} className="auth-mode-switch" onClick={()=>{stopCheck();setChecking(false);setProof(null);setPassword('');setConfirmPassword('');setRegister(false);setRecovery(true);}}>Forgot password?</button></p></div>}
       </>}
       </section>
     </div>

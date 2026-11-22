@@ -68,7 +68,7 @@ Users see their own study sessions, tasks, and settings. Ordinary users cannot o
 
 Administrators see a numeric badge on **Users** for unseen self-registrations. Opening Users loads the latest account list and acknowledges the registrations in that list; the selected-page orange dot then returns. Clicking Users again reloads it. Counts refresh on sign-in, when the window regains focus, and every 30 seconds. Seen status is stored per administrator in SQLite. Existing imported accounts and accounts created manually by an administrator do not count as new self-registrations.
 
-After administrator setup is complete, select **Create an account** on the sign-in page. Enter your name, email, password, and confirmation. Select **Verify** to run the browser security check, then **Create account**. Successful registration signs you in as an ordinary user; submitted administrator roles are ignored.
+After administrator setup is complete, select the **Sign Up** button below **Sign In** on the login page. Enter your name, email, password, and confirmation. Select **Verify** to run the browser security check, then **Create account**. Successful registration signs you in as an ordinary user; submitted administrator roles are ignored. Use **Back to Sign In** to return to the login form.
 
 Local registration opens by default. `REGISTRATION_ENABLED=false` disables it. Production defaults to disabled; `REGISTRATION_ENABLED=true` explicitly enables it. No VPS deployment is part of local feature development; deploy only when explicitly requested by the owner.
 

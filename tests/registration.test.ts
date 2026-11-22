@@ -47,7 +47,11 @@ test('self-registration validates proof, blocks abuse, isolates users and surviv
     assert.equal((await call('/auth/register',{...account,...expired})).status,400);
     const tooFast=await proof();db.prepare('UPDATE registration_challenges SET issued_at=? WHERE id=?').run(Date.now()+5000,tooFast.challengeId);
     assert.equal((await call('/auth/register',{...account,...tooFast})).status,400);
-    assert.equal((await call('/auth/register',{...account,...await proof(),email:'NEW@example.test'})).status,409);
+    const originalHash=db.prepare('SELECT password_hash FROM users WHERE email=?').get(account.email)!.password_hash;
+    const duplicate=await call('/auth/register',{...account,...await proof(),email:'NEW@example.test',password:'DifferentPassword123!'});
+    assert.equal(duplicate.status,409);assert.match(duplicate.body.error,/already registered/);assert.match(duplicate.body.error,/Forgot password/);
+    assert.equal(db.prepare('SELECT password_hash FROM users WHERE email=?').get(account.email)!.password_hash,originalHash);
+    assert.equal(db.prepare('SELECT count(*) AS count FROM registration_events').get()!.count,1);
     assert.equal((await call('/auth/register',{...account,...await proof(),password:'short'})).status,400);
     const mismatch=await proof();db.prepare("UPDATE registration_challenges SET ip_hash='different' WHERE id=?").run(mismatch.challengeId);
     assert.equal((await call('/auth/register',{...account,...mismatch})).status,400);
