@@ -1,0 +1,10 @@
+studytimer.snlynnoo.dev {
+    encode zstd gzip
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        X-Frame-Options DENY
+        -Server
+    }
+    reverse_proxy study-timer:3000
+}

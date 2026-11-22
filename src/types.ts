@@ -5,6 +5,7 @@ export interface Session {
   startTime: string;
   endTime: string;
   duration: number;
+  breakSeconds?: number | null;
   mainTask: string;
   topic: string;
   createdAt?: any;

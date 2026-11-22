@@ -6,302 +6,106 @@ import Dashboard from "./components/Dashboard";
 import SessionList from "./components/SessionList";
 import PomodoroInfo from "./components/PomodoroInfo";
 import HistoryActions from "./components/HistoryActions";
-import SettingsModal from "./components/SettingsModal";
+import SettingsPage from "./components/SettingsPage";
 import AuthView from "./components/AuthView";
-import { Settings as SettingsIcon, LayoutDashboard, Timer as TimerIcon, List, AlertCircle, LogOut, User as UserIcon, Info, Share2, Check } from "lucide-react";
+import { Settings as SettingsIcon, LayoutDashboard, Timer as TimerIcon, List, AlertCircle, LogOut, User as UserIcon, Info, Check, ArrowUpRight, Clock3, Target, Flame, CalendarDays } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { supabase } from "./lib/supabase";
-import { User as SupabaseUser } from "@supabase/supabase-js";
+import { api, type LocalUser } from "./lib/api";
+import UsersView from "./components/UsersView";
+import TextSizeControl from "./components/TextSizeControl";
+import TodoView from "./components/TodoView";
+import LiveClock from "./components/LiveClock";
+import { normalizeTimerTheme, timerColor } from "./lib/palette";
+import { usePomodoroTimer } from "./hooks/usePomodoroTimer";
+import type { TimerEvent } from "./lib/timerMachine";
+import LongBreakPrompt from "./components/LongBreakPrompt";
+import BreakDuration from "./components/BreakDuration";
 
 export default function App() {
-  const [user, setUser] = useState<SupabaseUser | null>(null);
+  const [fontSize, setFontSize] = useState(() => {
+    const saved = Number(localStorage.getItem('study_font_size'));
+    return Number.isFinite(saved) && saved >= 14 && saved <= 22 ? saved : 16;
+  });
+  const [user, setUser] = useState<LocalUser | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
-  const [mode, setMode] = useState<TimerMode>("work");
-  const [mainTask, setMainTask] = useState<string>(() => {
-    return localStorage.getItem("pomo_last_main_task") || "";
-  });
-  const [topic, setTopic] = useState<string>(() => {
-    return localStorage.getItem("pomo_last_topic") || "";
-  });
-  const [isActive, setIsActive] = useState(false);
+  const [mainTask, setMainTask] = useState("");
+  const [topic, setTopic] = useState("");
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [view, setView] = useState<"timer" | "dashboard" | "list" | "info">("timer");
-  const [startTime, setStartTime] = useState<string | null>(null);
+  const [view, setView] = useState<"timer" | "dashboard" | "list" | "info" | "users" | "todos" | "settings">("timer");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncStatus, setLastSyncStatus] = useState<"success" | "error" | null>(null);
   const [isInitialSyncDone, setIsInitialSyncDone] = useState(false);
   const [isSettingsSyncing, setIsSettingsSyncing] = useState(false);
-  const [showShareTooltip, setShowShareTooltip] = useState(false);
 
-  const [settings, setSettings] = useState<TimerSettings>(() => {
-    const saved = localStorage.getItem("pomo_settings");
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.darkModeWhenRunning === undefined) parsed.darkModeWhenRunning = false;
-      return parsed;
-    }
-    return { work: 25, shortBreak: 5, longBreak: 15, darkModeWhenRunning: false };
-  });
 
-  const [timeLeft, setTimeLeft] = useState(settings[mode] * 60);
-
-  const [theme, setTheme] = useState<ThemeSettings>(() => {
-    const saved = localStorage.getItem("pomo_theme");
-    return saved ? JSON.parse(saved) : { work: "bg-indigo-900", shortBreak: "bg-yellow-400", longBreak: "bg-green-500" };
-  });
-
-  const [sound, setSound] = useState<SoundSettings>(() => {
-    const saved = localStorage.getItem("pomo_sound");
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.type === "https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3") {
-        parsed.type = "https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3";
-      } else if (parsed.type === "https://assets.mixkit.co/active_storage/sfx/2572/2572-preview.mp3") {
-        parsed.type = "https://assets.mixkit.co/active_storage/sfx/951/951-preview.mp3";
-      }
-      return parsed;
-    }
-    return { 
-      enabled: true, 
-      type: "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3",
-      volume: 0.5,
-      repeatCount: 1
-    };
-  });
-
+  const [settings, setSettings] = useState<TimerSettings>({ work: 25, shortBreak: 5, longBreak: 15, darkModeWhenRunning: false });
+  const [theme, setTheme] = useState<ThemeSettings>({ work: "bg-indigo-900", shortBreak: "bg-yellow-400", longBreak: "bg-green-500" });
+  const [sound, setSound] = useState<SoundSettings>({ enabled: true, type: "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3", volume: 0.5, repeatCount: 1 });
   const lastLocalChangeRef = useRef<number>(0);
+  const currentUserId = useRef(user?.id);
+  currentUserId.current = user?.id;
 
-  // Initialize Supabase Auth state & handle popup callback message
   useEffect(() => {
-    // Check if we are inside a popup callback with hash params
-    if (window.opener && window.location.hash) {
-      const hashParams = new URLSearchParams(window.location.hash.substring(1));
-      const accessToken = hashParams.get("access_token");
-      const refreshToken = hashParams.get("refresh_token");
-      if (accessToken && refreshToken) {
-        try {
-          window.opener.postMessage(
-            {
-              type: "SUPABASE_AUTH_SESSION",
-              session: {
-                access_token: accessToken,
-                refresh_token: refreshToken,
-              },
-            },
-            "*"
-          );
-        } catch {
-          // ignore
-        }
-        setTimeout(() => {
-          try {
-            window.close();
-          } catch {
-            // ignore
-          }
-        }, 300);
-      }
-    }
+    document.documentElement.style.fontSize = `${fontSize}px`;
+    localStorage.setItem('study_font_size', String(fontSize));
+  }, [fontSize]);
 
-    // Global listener for session messages from popup window
-    const handlePopupMessage = async (event: MessageEvent) => {
-      if (event.data?.type === "SUPABASE_AUTH_SESSION" && event.data?.session?.access_token) {
-        try {
-          const { data } = await supabase.auth.setSession({
-            access_token: event.data.session.access_token,
-            refresh_token: event.data.session.refresh_token,
-          });
-          if (data.session?.user) {
-            setUser(data.session.user);
-            setIsAuthReady(true);
-            setIsLoading(false);
-          }
-        } catch (e) {
-          console.error("Error setting session from popup:", e);
-        }
-      }
-    };
-    window.addEventListener("message", handlePopupMessage);
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setIsAuthReady(true);
-      setIsLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (!session?.user) {
-        setIsInitialSyncDone(false);
-        setSessions([]);
-      } else if (window.opener) {
-        // If inside popup window, send session tokens to opener
-        try {
-          window.opener.postMessage(
-            {
-              type: "SUPABASE_AUTH_SESSION",
-              session: {
-                access_token: session.access_token,
-                refresh_token: session.refresh_token,
-              },
-            },
-            "*"
-          );
-        } catch {
-          // ignore
-        }
-        setTimeout(() => {
-          try {
-            window.close();
-          } catch {
-            // ignore
-          }
-        }, 400);
-      }
-      setIsAuthReady(true);
-      setIsLoading(false);
-    });
-
-    return () => {
-      window.removeEventListener("message", handlePopupMessage);
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  const fetchSessions = async (userId: string, retries = 2) => {
-    try {
-      const { data, error } = await supabase
-        .from("sessions")
-        .select("*")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        if ((error.code === "PGRST303" || error.message?.includes("future")) && retries > 0) {
-          setTimeout(() => fetchSessions(userId, retries - 1), 1500);
-          return;
-        }
-        throw error;
-      }
-
-      const mapped: Session[] = (data || []).map((row: any) => ({
-        id: row.id,
-        userId: row.user_id,
-        date: row.date,
-        startTime: row.start_time || row.startTime || "",
-        endTime: row.end_time || row.endTime || "",
-        duration: Number(row.duration) || 0,
-        mainTask: row.main_task || row.mainTask || "General",
-        topic: row.topic || "General",
-        createdAt: row.created_at,
-      }));
-      setSessions(mapped);
-    } catch (err: any) {
-      console.error("Error fetching sessions from Supabase:", err);
-    } finally {
-      setIsLoading(false);
-    }
+  const signedIn = (account: LocalUser) => {
+    setIsInitialSyncDone(false);
+    setSettings({work:25,shortBreak:5,longBreak:15,darkModeWhenRunning:false});
+    setTheme({work:"bg-indigo-900",shortBreak:"bg-yellow-400",longBreak:"bg-green-500"});
+    setSound({enabled:true,type:"https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3",volume:0.5,repeatCount:1});
+    setView("timer"); setMainTask(""); setTopic(""); setError(null); setUser(account);
   };
 
-  // Fetch and subscribe to sessions
   useEffect(() => {
-    if (!user) {
-      setSessions([]);
-      return;
-    }
+    api('/auth/me').then(({user}) => { if (user) signedIn(user); })
+      .catch(e => setError(e.message))
+      .finally(() => {setIsAuthReady(true);setIsLoading(false);});
+  }, []);
 
+  const fetchSessions = async (userId: string) => {
+    try {
+      const data = await api('/sessions');
+      if (currentUserId.current !== userId) return;
+      setSessions(data.map((row: any) => ({
+        id:row.id,userId:row.user_id,date:row.date,startTime:row.start_time,endTime:row.end_time,
+        duration:row.duration,breakSeconds:row.break_seconds,mainTask:row.main_task,topic:row.topic,createdAt:row.created_at,
+      })));
+    } catch (e: any) { setError(e.message); }
+    finally { setIsLoading(false); }
+  };
+
+  useEffect(() => {
+    if (!user) { setSessions([]); return; }
     fetchSessions(user.id);
-
-    const channel = supabase
-      .channel(`public:sessions:${user.id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "sessions", filter: `user_id=eq.${user.id}` },
-        () => {
-          fetchSessions(user.id);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, [user]);
 
-  // Sync settings from Supabase
   useEffect(() => {
-    if (!user) {
-      setIsInitialSyncDone(false);
-      return;
-    }
-
-    const fetchSettings = async (retries = 2) => {
-      try {
-        const { data, error } = await supabase
-          .from("user_settings")
-          .select("*")
-          .eq("user_id", user.id)
-          .maybeSingle();
-
-        if (error) {
-          if ((error.code === "PGRST303" || error.message?.includes("future")) && retries > 0) {
-            setTimeout(() => fetchSettings(retries - 1), 1500);
-            return;
-          }
-          if (error.code !== "PGRST116") {
-            console.error("Error fetching settings:", error);
-          }
-        }
-
-        if (data) {
-          if (data.timer) {
-            setSettings((prev) => {
-              const newTimer = { ...data.timer };
-              if (newTimer.darkModeWhenRunning === undefined) newTimer.darkModeWhenRunning = false;
-              return newTimer;
-            });
-          }
-          if (data.theme) setTheme(data.theme);
-          if (data.sound) setSound(data.sound);
-        }
-      } catch (err) {
-        console.error("Settings sync error:", err);
-      } finally {
-        setIsInitialSyncDone(true);
-      }
-    };
-
-    fetchSettings();
+    if (!user) {setIsInitialSyncDone(false); return;}
+    let cancelled = false;
+    api('/settings').then(data => {
+      if (cancelled) return;
+      if (data?.timer) setSettings({...data.timer,darkModeWhenRunning:data.timer.darkModeWhenRunning ?? false});
+      if (data?.theme) setTheme(normalizeTimerTheme(data.theme));
+      if (data?.sound) setSound(data.sound);
+      setIsInitialSyncDone(true);
+    }).catch(e => {if (!cancelled) setError('Unable to load settings: ' + e.message);});
+    return () => {cancelled=true;};
   }, [user]);
 
-  // Save settings to Supabase
   useEffect(() => {
     if (!user || !isInitialSyncDone) return;
-    
     const timer = setTimeout(async () => {
-      try {
-        setIsSettingsSyncing(true);
-        await supabase
-          .from("user_settings")
-          .upsert({
-            user_id: user.id,
-            timer: settings,
-            theme: theme,
-            sound: sound,
-            updated_at: new Date().toISOString(),
-          });
-      } catch (err) {
-        console.error("Failed to save settings:", err);
-      } finally {
-        setIsSettingsSyncing(false);
-      }
-    }, 2000);
-
+      setIsSettingsSyncing(true);
+      try { await api('/settings',{method:'PUT',body:JSON.stringify({timer:settings,theme,sound})}); }
+      catch (e: any) { setError('Unable to save settings: ' + e.message); }
+      finally {setIsSettingsSyncing(false);}
+    }, 800);
     return () => clearTimeout(timer);
-  }, [user, settings, theme, sound, isInitialSyncDone]);
+  }, [user,settings,theme,sound,isInitialSyncDone]);
 
   // Track local changes separately
   useEffect(() => {
@@ -317,51 +121,22 @@ export default function App() {
     }
   }, [lastSyncStatus]);
 
-  useEffect(() => {
-    localStorage.setItem("pomo_settings", JSON.stringify(settings));
-  }, [settings]);
-
-  useEffect(() => {
-    localStorage.setItem("pomo_theme", JSON.stringify(theme));
-  }, [theme]);
-
-  useEffect(() => {
-    localStorage.setItem("pomo_sound", JSON.stringify(sound));
-  }, [sound]);
-
-  useEffect(() => {
-    localStorage.setItem("pomo_last_main_task", mainTask);
-  }, [mainTask]);
-
-  useEffect(() => {
-    localStorage.setItem("pomo_last_topic", topic);
-  }, [topic]);
-
   const saveSession = async (session: Session) => {
     if (!user) return false;
     try {
       setIsSyncing(true);
       setLastSyncStatus(null);
-      const { error } = await supabase
-        .from("sessions")
-        .insert({
-          user_id: user.id,
-          date: session.date,
-          start_time: session.startTime,
-          end_time: session.endTime,
-          duration: session.duration,
-          main_task: session.mainTask,
-          topic: session.topic,
-        });
-
-      if (error) throw error;
+      await api('/sessions', {method:'POST',body:JSON.stringify({
+        date:session.date,start_time:session.startTime,end_time:session.endTime,
+        duration:session.duration,main_task:session.mainTask,topic:session.topic,
+      })});
       setLastSyncStatus("success");
       await fetchSessions(user.id);
       return true;
     } catch (err: any) {
       console.error("Error saving session:", err);
       setLastSyncStatus("error");
-      setError("Failed to save session to Supabase.");
+      setError("Failed to save session to the local database.");
       return false;
     } finally {
       setIsSyncing(false);
@@ -390,47 +165,34 @@ export default function App() {
   const showNotification = (mode: TimerMode) => {
     if ("Notification" in window && Notification.permission === "granted") {
       const title = mode === "work" ? "Focus Session Complete!" : "Break Over!";
-      const body = mode === "work" ? "Time for a short break." : "Ready to focus again?";
+      const body = mode === "work" ? "Your focus session is complete. Time to take a break." : "Ready to focus again?";
       new Notification(title, { body, icon: "/favicon.ico" });
     }
   };
 
-  const handleTimerComplete = React.useCallback(async () => {
-    const completedMode = mode;
-    const completedMainTask = mainTask;
-    const completedTopic = topic;
-    const completedStartTime = startTime;
-    const completedDuration = settings[mode];
-
-    if (mode === "work") {
-      setMode("shortBreak");
-    } else {
-      setMode("work");
-    }
-    setIsActive(false);
-    setStartTime(null);
-
-    playSound();
-    showNotification(completedMode);
-
-    if (completedMode === "work" && user) {
-      const endTime = format(new Date(), "HH:mm");
-      const newSession: Session = {
-        date: format(new Date(), "yyyy-MM-dd"),
-        startTime: completedStartTime || format(new Date(Date.now() - completedDuration * 60000), "HH:mm"),
-        endTime,
-        duration: completedDuration,
-        mainTask: completedMainTask,
-        topic: completedTopic,
-      };
-      await saveSession(newSession);
-    }
-  }, [mode, mainTask, topic, startTime, settings, sound, user]);
+  const handleTimerEvent = async (event:TimerEvent,owner:string) => {
+    if(currentUserId.current!==owner)throw new Error('Account changed.');
+    setIsSyncing(true);
+    try {
+      if(event.type==='focus'){
+        await api('/sessions',{method:'POST',body:JSON.stringify({id:event.sessionId,owner_id:owner,
+          date:format(new Date(event.startedAt),'yyyy-MM-dd'),start_time:format(new Date(event.startedAt),'HH:mm'),
+          end_time:format(new Date(event.endedAt),'HH:mm'),duration:event.duration,main_task:event.mainTask||'General',topic:event.topic||'General'})});
+      }else await api(`/sessions/${event.sessionId}/break`,{method:'PUT',body:JSON.stringify({seconds:event.seconds,owner_id:owner})});
+      if(currentUserId.current===owner){setLastSyncStatus('success');await fetchSessions(owner);}
+    }catch(e:any){
+      if(currentUserId.current===owner){setLastSyncStatus('error');setError('Unable to save timer progress. It is kept on this device and will retry automatically.');}
+      throw e;
+    }finally{setIsSyncing(false);}
+  };
+  const timer=usePomodoroTimer({userId:user?.id,ready:isInitialSyncDone,settings,mainTask,topic,onEvent:handleTimerEvent,
+    onComplete:(completedMode)=>{playSound();showNotification(completedMode);},
+    onRestore:state=>{setMainTask(state.focusTask||'');setTopic(state.focusTopic||'');}});
+  const {mode,timeLeft,isActive,setMode,toggle:toggleTimer,reset:resetTimer}=timer;
 
   const handleDeleteSession = async (id: string) => {
     try {
-      const { error } = await supabase.from("sessions").delete().eq("id", id);
-      if (error) throw error;
+      await api(`/sessions/${id}`, {method:"DELETE"});
       setSessions((prev) => prev.filter((s) => s.id !== id));
     } catch (err: any) {
       console.error("Error deleting session:", err);
@@ -450,8 +212,7 @@ export default function App() {
       if (updates.mainTask !== undefined) dbUpdates.main_task = updates.mainTask;
       if (updates.topic !== undefined) dbUpdates.topic = updates.topic;
 
-      const { error } = await supabase.from("sessions").update(dbUpdates).eq("id", id);
-      if (error) throw error;
+      await api(`/sessions/${id}`, {method:"PATCH",body:JSON.stringify(dbUpdates)});
       setLastSyncStatus("success");
       if (user) await fetchSessions(user.id);
     } catch (err: any) {
@@ -460,43 +221,12 @@ export default function App() {
     }
   };
 
-  const toggleTimer = React.useCallback((active: boolean) => {
-    if (active && !startTime) {
-      setStartTime(format(new Date(), "HH:mm"));
-    }
-    setIsActive(active);
-  }, [startTime]);
-
-  useEffect(() => {
-    if (!isActive) {
-      const newTime = settings[mode] * 60;
-      setTimeLeft(newTime);
-    }
-  }, [mode, settings, isActive]);
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
-    if (isActive && timeLeft > 0) {
-      interval = setInterval(() => {
-        setTimeLeft((prev) => prev - 1);
-      }, 1000);
-    } else if (timeLeft <= 0 && isActive) {
-      handleTimerComplete();
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isActive, timeLeft, handleTimerComplete]);
-
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-  };
-
-  const handleShare = () => {
-    const shareUrl = window.location.href;
-    navigator.clipboard.writeText(shareUrl);
-    setShowShareTooltip(true);
-    setTimeout(() => setShowShareTooltip(false), 2000);
+    try {
+      toggleTimer(false);
+      await api('/auth/logout',{method:'POST',body:'{}'});
+      setIsInitialSyncDone(false);setUser(null);setSessions([]);setView('timer');setError(null);
+    } catch (e: any) {setError(e.message);}
   };
 
   if (!isAuthReady) {
@@ -508,110 +238,40 @@ export default function App() {
   }
 
   if (!user) {
-    return <AuthView onSuccess={() => {}} />;
+    return <AuthView onSuccess={signedIn} fontSize={fontSize} onFontSizeChange={setFontSize} />;
   }
 
   const isDarkMode = settings.darkModeWhenRunning && isActive;
-  const currentThemeClass = isDarkMode ? "bg-gray-950" : theme[mode];
-  const currentTextClass = isDarkMode ? "text-white" : "text-gray-900";
-  const userDisplayName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split("@")[0] || "User";
-  const userAvatar = user.user_metadata?.avatar_url || user.user_metadata?.picture;
+  const userDisplayName = user.name || user.email.split('@')[0];
+  const todaySessions = sessions.filter(session => session.date === format(new Date(), 'yyyy-MM-dd'));
+  const todayMinutes = todaySessions.reduce((total, session) => total + session.duration, 0);
+  const totalMinutes = sessions.reduce((total, session) => total + session.duration, 0);
+
 
   return (
-    <div className={`min-h-screen transition-colors duration-1000 ${currentThemeClass} font-sans ${currentTextClass}`}>
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 flex justify-center p-2 sm:p-4">
-        <div className="flex items-center gap-0.5 sm:gap-1 p-1 bg-white/20 backdrop-blur-lg rounded-2xl border border-white/30 shadow-xl max-w-[98vw] overflow-x-auto no-scrollbar">
-          <div className="flex items-center gap-2 px-3 py-1.5 mr-1 border-r border-white/20 shrink-0">
-            {userAvatar ? (
-              <img
-                src={userAvatar}
-                alt={userDisplayName}
-                referrerPolicy="no-referrer"
-                className="w-6 h-6 rounded-full object-cover border border-white/40"
-              />
-            ) : (
-              <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
-                <UserIcon className="w-4 h-4 text-white" />
-              </div>
-            )}
-            <span className="hidden lg:block text-xs font-bold text-white whitespace-nowrap max-w-[120px] truncate">
-              Hi, {userDisplayName}
-            </span>
-          </div>
-
-          <NavButton
-            active={view === "timer"}
-            onClick={() => setView("timer")}
-            icon={<TimerIcon className="w-5 h-5" />}
-            label="Timer"
-          />
-          <NavButton
-            active={view === "dashboard"}
-            onClick={() => setView("dashboard")}
-            icon={<LayoutDashboard className="w-5 h-5" />}
-            label="Stats"
-          />
-          <NavButton
-            active={view === "list"}
-            onClick={() => setView("list")}
-            icon={<List className="w-5 h-5" />}
-            label="History"
-          />
-          <NavButton
-            active={view === "info"}
-            onClick={() => setView("info")}
-            icon={<Info className="w-5 h-5" />}
-            label="Guide"
-          />
-          
-          <div className="w-px h-6 bg-white/20 mx-0.5 sm:mx-1 shrink-0" />
-          
-          <button
-            onClick={handleShare}
-            className="relative flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-white hover:bg-white/10 transition-all shrink-0"
-            title="Share App"
-          >
-            {showShareTooltip ? <Check className="w-5 h-5 text-emerald-400" /> : <Share2 className="w-5 h-5" />}
-            <AnimatePresence>
-              {showShareTooltip && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 10 }}
-                  className="absolute top-12 left-1/2 -translate-x-1/2 px-3 py-1 bg-emerald-500 text-white text-[10px] font-bold rounded-lg whitespace-nowrap shadow-lg"
-                >
-                  Link Copied!
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </button>
-          
-          <button
-            onClick={() => setIsSettingsOpen(true)}
-            className="relative flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-white hover:bg-white/10 transition-all shrink-0"
-          >
-            <SettingsIcon className="w-5 h-5" />
-            {isInitialSyncDone && (
-              <div className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-indigo-900 ${isSettingsSyncing ? "bg-amber-400 animate-pulse" : "bg-emerald-400"}`} />
-            )}
-          </button>
-          
-          <button
-            onClick={handleLogout}
-            className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-white hover:bg-white/10 transition-all shrink-0"
-            title="Sign Out"
-          >
-            <LogOut className="w-5 h-5" />
-          </button>
+    <div className={`study-app ${isDarkMode ? 'study-dark' : ''}`} style={{'--mode-accent':timerColor(theme[mode])} as React.CSSProperties}>
+      <aside className="app-sidebar" inert={timer.awaitingLongBreak}>
+        <a className="brand" href="/" aria-label="Study Timer home"><span className="brand-icon"><TimerIcon size={23}/></span><span>study<span className="brand-light">timer</span></span><span className="brand-dot"/></a>
+        <div className="sidebar-label">WORKSPACE</div>
+        <nav className="sidebar-nav" aria-label="Main navigation">
+          <NavButton active={view === 'timer'} onClick={()=>setView('timer')} icon={<TimerIcon size={19}/>} label="Timer"/>
+          <NavButton active={view === 'dashboard'} onClick={()=>setView('dashboard')} icon={<LayoutDashboard size={19}/>} label="Stats"/>
+          <NavButton active={view === 'list'} onClick={()=>setView('list')} icon={<List size={19}/>} label="History"/>
+          <NavButton active={view === 'todos'} onClick={()=>setView('todos')} icon={<CalendarDays size={19}/>} label="To-do"/>
+          <NavButton active={view === 'info'} onClick={()=>setView('info')} icon={<Info size={19}/>} label="Guide"/>
+          {user.role === 'admin' && <NavButton active={view === 'users'} onClick={()=>setView('users')} icon={<UserIcon size={19}/>} label="Users"/>}
+          <NavButton active={view === 'settings'} onClick={()=>setView('settings')} icon={<SettingsIcon size={19}/>} label="Settings"/>
+        </nav>
+        <div className="sidebar-bottom">
+          <div className="sidebar-profile"><span className="profile-avatar">{userDisplayName.slice(0,1)}</span><span><strong>{userDisplayName}</strong><small>{user.role === 'admin' ? 'Administrator' : 'Your personal workspace'}</small></span><button onClick={handleLogout} title="Sign Out" aria-label="Sign Out"><LogOut size={17}/></button></div>
         </div>
-      </nav>
-
-      <main className="pt-20 sm:pt-24 pb-12 px-4 flex flex-col items-center">
-
+      </aside>
+      <div className="workspace" inert={timer.awaitingLongBreak}>
+        <header className="workspace-header"><TextSizeControl value={fontSize} onChange={setFontSize}/><div className="header-actions"><LiveClock/><button className="icon-button mobile-signout" onClick={handleLogout} aria-label="Sign Out" title="Sign Out"><LogOut size={17}/></button></div></header>
+        <main className="workspace-main">
         {error && (
           <div className="mb-8 w-full max-w-md">
-            <div className="p-4 bg-white/90 backdrop-blur rounded-2xl border border-rose-200 flex items-center gap-3 text-rose-600 shadow-xl">
+            <div role="alert" className="p-4 bg-white/90 backdrop-blur rounded-2xl border border-teal-200 flex items-center gap-3 text-teal-600 shadow-xl">
               <AlertCircle className="w-5 h-5 flex-shrink-0" />
               <p className="text-sm font-medium">{error}</p>
               <button onClick={() => setError(null)} className="ml-auto text-xs font-bold uppercase">Dismiss</button>
@@ -619,6 +279,18 @@ export default function App() {
           </div>
         )}
 
+        {view === 'settings' && <SettingsPage
+        settings={settings}
+        onSettingsChange={setSettings}
+        theme={theme}
+        onThemeChange={setTheme}
+        sound={sound}
+        onSoundChange={setSound}
+        isSyncing={isSettingsSyncing}
+        isDarkMode={isDarkMode}
+        />}
+        {view === 'todos' && <TodoView key={user.id}/> }
+        {view === 'users' && user.role === 'admin' && <UsersView currentUserId={user.id} onOwnPasswordReset={() => {toggleTimer(false);setUser(null);setSessions([]);setIsInitialSyncDone(false);setView('timer');}} />}
         <AnimatePresence mode="wait">
           {view === "timer" && (
             <motion.div
@@ -626,85 +298,29 @@ export default function App() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="flex flex-col items-center w-full"
+              className="focus-home"
             >
-              <div className="mb-8 w-full max-w-md grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="block text-white/70 text-[10px] font-bold uppercase tracking-widest ml-4">
-                    Main Task / Module
-                  </label>
-                  <input
-                    type="text"
-                    value={mainTask}
-                    onChange={(e) => setMainTask(e.target.value)}
-                    placeholder="Enter main task"
-                    className="w-full px-5 py-3 rounded-2xl bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/30 transition-all text-base"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-white/70 text-[10px] font-bold uppercase tracking-widest ml-4">
-                    Specific Topic
-                  </label>
-                  <input
-                    type="text"
-                    value={topic}
-                    onChange={(e) => setTopic(e.target.value)}
-                    placeholder="Enter specific topic"
-                    className="w-full px-5 py-3 rounded-2xl bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/30 transition-all text-base"
-                  />
+              <div className="daily-metrics">
+                <div><span className="metric-icon metric-teal"><Clock3 size={19}/></span><span><small>Focus today</small><strong className="spaced-duration"><span>{Math.floor(todayMinutes/60)} <em>h</em></span><span>{todayMinutes%60} <em>m</em></span></strong></span><span className="metric-caption">Time well spent</span></div>
+                <div><span className="metric-icon metric-indigo"><Target size={19}/></span><span><small>Sessions today</small><strong>{todaySessions.length.toString().padStart(2,'0')}</strong></span><span className="metric-caption">One at a time</span></div>
+                <div><span className="metric-icon metric-amber"><Flame size={19}/></span><span><small>All-time focus</small><strong className="spaced-duration"><span>{Math.floor(totalMinutes/60)} <em>h</em></span><span>{totalMinutes%60} <em>m</em></span></strong></span><span className="metric-caption">It all adds up</span></div>
+              </div>
+              <div className="focus-grid">
+                <section className="timer-stage">
+                  <div className="timer-topline"><span><span className={isActive ? 'live-dot active' : 'live-dot'}/>{isActive ? 'IN THE FLOW' : 'YOUR NEXT FOCUS SESSION'}</span><span className="timer-number">SESSION {timer.cycleStep} / 4</span></div>
+                  <div className="mode-tabs" role="group" aria-label="Timer mode">
+                    <ModeButton active={mode==='work'} onClick={()=>setMode('work')} label="Work"/>
+                    <ModeButton active={mode==='shortBreak'} onClick={()=>setMode('shortBreak')} label="Short Break"/>
+                    <ModeButton active={mode==='longBreak'} onClick={()=>setMode('longBreak')} label="Long Break"/>
+                  </div>
+                  <Timer mode={mode} duration={timer.duration} timeLeft={timeLeft} isActive={isActive} onToggle={toggleTimer} onReset={resetTimer} disabled={!isInitialSyncDone||timer.awaitingLongBreak} theme={theme}/>
+                  <div className="timer-bottomline"><span className="timer-bottom-dot"/>{isSyncing ? 'Saving your session…' : lastSyncStatus === 'error' ? 'Could not save your session' : lastSyncStatus === 'success' ? 'Session saved. Nicely done!' : 'Your progress is saved on this device.'}</div>
+                </section>
+                <div className="focus-side">
+                  <section className="intention-card"><div className="card-heading"><span className="small-icon"><BookIcon/></span><h2>Current task</h2></div><label htmlFor="main-task">MAIN TASK / MODULE</label><input id="main-task" value={mainTask} onChange={e=>setMainTask(e.target.value)} placeholder="What are you working on?" maxLength={1000}/><label htmlFor="topic">SPECIFIC TOPIC</label><input id="topic" value={topic} onChange={e=>setTopic(e.target.value)} placeholder="Break it into something small" maxLength={1000}/></section>
                 </div>
               </div>
-
-              <div className="flex gap-2 mb-8 p-1 bg-black/10 rounded-2xl">
-                <ModeButton
-                  active={mode === "work"}
-                  onClick={() => setMode("work")}
-                  label="Work"
-                />
-                <ModeButton
-                  active={mode === "shortBreak"}
-                  onClick={() => setMode("shortBreak")}
-                  label="Short Break"
-                />
-                <ModeButton
-                  active={mode === "longBreak"}
-                  onClick={() => setMode("longBreak")}
-                  label="Long Break"
-                />
-              </div>
-
-              <Timer
-                mode={mode}
-                duration={settings[mode]}
-                timeLeft={timeLeft}
-                setTimeLeft={setTimeLeft}
-                isActive={isActive}
-                setIsActive={toggleTimer}
-                theme={theme}
-              />
-
-              {isSyncing && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mt-8 flex items-center gap-2 px-4 py-2 bg-white/10 rounded-full border border-white/20"
-                >
-                  <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
-                  <span className="text-white/70 text-xs font-bold uppercase tracking-widest">Saving to Supabase...</span>
-                </motion.div>
-              )}
-
-              {lastSyncStatus === "success" && !isSyncing && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  className="mt-8 flex items-center gap-2 px-4 py-2 bg-emerald-500/20 rounded-full border border-emerald-500/30"
-                >
-                  <div className="w-2 h-2 bg-emerald-500 rounded-full" />
-                  <span className="text-emerald-400 text-xs font-bold uppercase tracking-widest">Session Saved!</span>
-                </motion.div>
-              )}
+              <section className="recent-section"><div className="recent-heading"><h3>Recent sessions <span>{sessions.length}</span></h3><button onClick={()=>setView('list')}>View history <ArrowUpRight size={15}/></button></div>{sessions.length ? <div className="recent-rows">{sessions.slice(0,3).map(session=><div className="recent-row" key={session.id}><span className="recent-session-icon"><Check size={16}/></span><div><strong>{session.mainTask || 'Focus session'}</strong><small>{session.topic || 'General'}</small></div><span className="recent-date">{format(new Date(session.date+'T12:00:00'),'MMM d')}</span><div className="session-durations"><span className="duration-tag">{session.duration} min focus</span><BreakDuration seconds={session.breakSeconds}/></div></div>)}</div> : <div className="recent-empty"><span><Target size={21}/></span><div><strong>Your first session starts here.</strong><p>Choose a task and press start. We’ll take care of the rest.</p></div></div>}</section>
             </motion.div>
           )}
 
@@ -730,9 +346,9 @@ export default function App() {
             >
               <div className="w-full max-w-2xl mb-2 flex items-center justify-between px-4">
                 <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${isSyncing ? "bg-amber-400 animate-pulse" : lastSyncStatus === "error" ? "bg-rose-500" : "bg-emerald-500"}`} />
-                  <span className="text-white/60 text-xs font-medium">
-                    {isSyncing ? "Syncing..." : lastSyncStatus === "error" ? "Sync Failed" : "Synced with Supabase"}
+                  <div className={`w-2 h-2 rounded-full ${isSyncing ? "bg-amber-400 animate-pulse" : lastSyncStatus === "error" ? "bg-red-800" : "bg-emerald-500"}`} />
+                  <span className="text-slate-500 text-xs font-medium">
+                    {isSyncing ? "Syncing..." : lastSyncStatus === "error" ? "Sync Failed" : "Saved locally"}
                   </span>
                 </div>
               </div>
@@ -760,72 +376,23 @@ export default function App() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="w-full flex flex-col items-center"
             >
-              <PomodoroInfo />
+              <PomodoroInfo settings={settings} />
             </motion.div>
           )}
         </AnimatePresence>
 
-        <footer className="mt-20 pb-8 text-center">
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 1 }}
-            className="space-y-2"
-          >
-            <p className="text-white/60 text-sm font-medium tracking-wide">
-              Made with <span className="text-rose-400 animate-pulse">♥️</span> by <span className="text-white font-bold">Sai</span>, Enjoy!
-            </p>
-            <div className="flex flex-col items-center gap-1">
-              <p className="text-white/30 text-[10px] font-bold uppercase tracking-[0.2em]">
-                Productivity • Focus • Discipline
-              </p>
-              <p className="text-white/20 text-[9px] font-bold tracking-widest">
-                VERSION 1.2.0
-              </p>
-            </div>
-          </motion.div>
-        </footer>
+        <footer className="workspace-footer"><span>Made with <span className="footer-heart">♥</span> by Sai</span><span>STUDYTIMER · 1.2</span></footer>
       </main>
-
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        settings={settings}
-        onSettingsChange={setSettings}
-        theme={theme}
-        onThemeChange={setTheme}
-        sound={sound}
-        onSoundChange={setSound}
-        isSyncing={isSettingsSyncing}
-        isDarkMode={isDarkMode}
-      />
+      </div>
+      {timer.awaitingLongBreak && <LongBreakPrompt minutes={settings.longBreak} onOkay={timer.acknowledgeLongBreak}/>}
     </div>
   );
 }
 
 function NavButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl transition-all shrink-0 ${
-        active ? "bg-white text-gray-900 shadow-lg" : "text-white hover:bg-white/10"
-      }`}
-    >
-      {icon}
-      <span className="hidden md:block text-sm font-bold">{label}</span>
-    </button>
-  );
+  return <button onClick={onClick} className={`nav-button ${active ? 'selected' : ''}`} aria-current={active ? 'page' : undefined} aria-label={label}>{icon}<span>{label}</span>{active && <span className="nav-active-dot"/>}</button>;
 }
-
-function ModeButton({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${
-        active ? "bg-white/20 text-white" : "text-white/50 hover:text-white"
-      }`}
-    >
-      {label}
-    </button>
-  );
+function ModeButton({active,onClick,label}: {active:boolean;onClick:()=>void;label:string}) {
+  return <button onClick={onClick} className={active ? 'mode-button selected' : 'mode-button'} aria-pressed={active}>{label}</button>;
 }
+function BookIcon() {return <List size={17}/>;}

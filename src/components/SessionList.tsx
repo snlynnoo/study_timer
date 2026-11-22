@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Trash2, Calendar, Clock, Tag, Edit2, Check, X } from "lucide-react";
 import { Session } from "../types";
+import BreakDuration from "./BreakDuration";
 import { format, parseISO } from "date-fns";
 
 interface SessionListProps {
@@ -62,7 +63,7 @@ export default function SessionList({ sessions, onDelete, onUpdate, isDarkMode }
   };
 
   return (
-    <div className="w-full max-w-4xl mt-2">
+    <div className="session-history w-full max-w-4xl mt-2">
       <h3 className={`text-xl font-bold mb-2 px-4 ${isDarkMode ? "text-emerald-400" : "text-emerald-600"}`}>Recent Sessions</h3>
       <div className="space-y-2">
         {sortedSessions.length === 0 ? (
@@ -81,7 +82,7 @@ export default function SessionList({ sessions, onDelete, onUpdate, isDarkMode }
                 {editingId === session.id ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold uppercase text-gray-400">Task & Topic</label>
+                      <label className="text-xs font-bold uppercase text-gray-400">Task & Topic</label>
                       <input 
                         type="text" 
                         value={editValues.mainTask} 
@@ -96,7 +97,7 @@ export default function SessionList({ sessions, onDelete, onUpdate, isDarkMode }
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold uppercase text-gray-400">Date & Duration (m)</label>
+                      <label className="text-xs font-bold uppercase text-gray-400">Date & Duration (m)</label>
                       <div className="flex gap-2">
                         <input 
                           type="date" 
@@ -134,19 +135,20 @@ export default function SessionList({ sessions, onDelete, onUpdate, isDarkMode }
                 ) : (
                   <>
                     <div className={`flex items-center gap-2 ${isDarkMode ? "text-white/60" : "text-gray-600"}`}>
-                      <Calendar className="w-4 h-4 text-rose-500" />
+                      <Calendar className="w-4 h-4 text-teal-500" />
                       <span className="text-sm font-medium">{format(parseISO(session.date), "MMM d, yyyy")}</span>
                     </div>
                     <div className={`flex items-center gap-2 ${isDarkMode ? "text-white/60" : "text-gray-600"}`}>
                       <Clock className="w-4 h-4 text-teal-500" />
                       <span className="text-sm font-medium">
-                        {session.startTime} - {session.endTime} ({session.duration}m)
+                        {session.startTime} - {session.endTime} ({session.duration} min focus)
                       </span>
+                      <BreakDuration seconds={session.breakSeconds}/>
                     </div>
                     <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 text-rose-600 w-fit">
+                      <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 text-teal-600 w-fit">
                         <Tag className="w-3 h-3" />
-                        <span className="text-[10px] font-bold uppercase tracking-wider">{session.mainTask}</span>
+                        <span className="text-xs font-bold uppercase tracking-wider">{session.mainTask}</span>
                       </div>
                       <span className={`text-sm font-bold ml-1 ${isDarkMode ? "text-white" : "text-gray-800"}`}>{session.topic}</span>
                     </div>
@@ -182,7 +184,7 @@ export default function SessionList({ sessions, onDelete, onUpdate, isDarkMode }
                     </button>
                     <button
                       onClick={() => session.id && onDelete(session.id)}
-                      className="p-2 text-gray-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                      className="p-2 text-gray-400 hover:text-teal-500 hover:bg-teal-50 rounded-lg transition-colors"
                       title="Delete"
                     >
                       <Trash2 className="w-5 h-5" />

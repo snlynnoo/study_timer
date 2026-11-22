@@ -1,0 +1,34 @@
+name: study-timer
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      TRUST_PROXY: '1'
+      APP_ORIGIN: https://studytimer.snlynnoo.dev
+      DATABASE_PATH: /app/.data/study-timer.sqlite
+    ports:
+      - '127.0.0.1:3001:3000'
+    volumes:
+      - /srv/study-timer/data:/app/.data
+    networks:
+      web:
+        aliases:
+          - study-timer
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 768m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+networks:
+  web:
+    external: true

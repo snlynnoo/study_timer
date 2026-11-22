@@ -1,0 +1,9 @@
+[Unit]
+Description=Back up Study Timer SQLite database
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/study-timer/app
+ExecStart=/usr/bin/docker compose exec -T app node server/backup.mjs

@@ -12,17 +12,17 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { 
-  format, 
-  parseISO, 
-  startOfDay, 
-  endOfDay, 
-  eachDayOfInterval, 
-  subDays, 
-  startOfMonth, 
-  endOfMonth, 
-  eachMonthOfInterval, 
-  startOfYear, 
+import {
+  format,
+  parseISO,
+  startOfDay,
+  endOfDay,
+  eachDayOfInterval,
+  subDays,
+  startOfMonth,
+  endOfMonth,
+  eachMonthOfInterval,
+  startOfYear,
   subMonths,
   isSameDay,
   isSameWeek,
@@ -32,6 +32,7 @@ import {
   startOfToday
 } from "date-fns";
 import { Session } from "../types";
+import { PALETTE } from "../lib/palette";
 import { LayoutGrid, Calendar, Clock, BookOpen, ChevronDown } from "lucide-react";
 
 interface DashboardProps {
@@ -64,7 +65,7 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
 
   // Filter sessions based on time range selector (Daily/Monthly/Yearly)
   const now = new Date();
-  
+
   const parsedCustomStart = useMemo(() => {
     const d = parseISO(customStartDate);
     return isNaN(d.getTime()) ? subDays(now, 30) : d;
@@ -193,7 +194,7 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
   // Otherwise, we show the base selection (usually "today" for daily, "this month" for monthly).
   const interactivelyFilteredSessions = useMemo(() => {
     if (!selectedBar) return baseFilteredSessions;
-    
+
     const correspondingItem = chartData.find(d => d.name === selectedBar);
     if (!correspondingItem?.rawDate) return baseFilteredSessions;
 
@@ -214,7 +215,7 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
     const task = (s.mainTask || "").trim();
     const subTopic = (s.topic || "").trim();
     const key = `${task.toLowerCase()}|||${subTopic.toLowerCase()}`;
-    
+
     if (!acc[key]) {
       acc[key] = { mainTask: task, topic: subTopic, duration: 0 };
     }
@@ -237,7 +238,7 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
     rawMinutes: value
   }));
 
-  const COLORS = ["#f43f5e", "#14b8a6", "#0ea5e9", "#f59e0b", "#8b5cf6", "#ec4899", "#10b981", "#6366f1"];
+  const COLORS = [PALETTE.blue, PALETTE.teal, PALETTE.orange, PALETTE.olive, PALETTE.rust];
 
   const totalMinutes = interactivelyFilteredSessions.reduce((acc: number, s: Session) => acc + s.duration, 0);
   const totalHours = totalMinutes / 60;
@@ -253,11 +254,11 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
     }
   };
 
-  const currentSelectionLabel = selectedBar 
+  const currentSelectionLabel = selectedBar
     ? (timeRange === "yearly" ? `Month: ${selectedBar}` : `Day: ${selectedBar}`)
-    : (timeRange === "daily" ? "Today" : 
-       timeRange === "weekly" ? "This Week" : 
-       timeRange === "monthly" ? "This Month" : 
+    : (timeRange === "daily" ? "Today" :
+       timeRange === "weekly" ? "This Week" :
+       timeRange === "monthly" ? "This Month" :
        timeRange === "yearly" ? "This Year" :
        `${format(parsedCustomStart, "MMM d")} - ${format(parsedCustomEnd, "MMM d")}`);
 
@@ -275,16 +276,16 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
         y={y}
         fill={isDarkMode ? "#ffffff" : "#1f2937"}
         textAnchor={isLeft ? "end" : "start"}
-        className="text-[12px] font-bold"
+        className="text-xs font-bold"
       >
         <tspan x={x} dy="-0.2em">
           {name.length > 20 ? name.substring(0, 18) + "..." : name}
         </tspan>
-        <tspan 
-          x={x} 
-          dy="1.4em" 
+        <tspan
+          x={x}
+          dy="1.4em"
           fill={isDarkMode ? "rgba(255,255,255,0.8)" : "rgba(0,0,0,0.7)"}
-          fontSize="11px"
+          fontSize="0.875rem"
           fontWeight="bold"
         >
           {`${(percent * 100).toFixed(1)}%`}
@@ -294,12 +295,12 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
   };
 
   return (
-    <div className="w-full max-w-6xl mt-6 space-y-8">
+    <div className="stats-page w-full max-w-6xl mt-6 space-y-8">
       {/* Time Range Selector */}
       <div className="flex flex-col gap-6">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="bg-white/10 backdrop-blur p-1 rounded-2xl border border-white/20 flex gap-0.5 sm:gap-1">
+            <div className="bg-white p-1 rounded-2xl border border-slate-200 flex gap-0.5 sm:gap-1">
               {(["daily", "weekly", "monthly", "yearly", "custom"] as TimeRange[]).map((range) => (
                 <button
                   key={range}
@@ -310,7 +311,7 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
                   className={`px-3 sm:px-6 py-2 rounded-xl text-xs sm:text-sm font-bold capitalize transition-all shrink-0 ${
                     timeRange === range
                       ? "bg-white text-gray-900 shadow-lg"
-                      : "text-white hover:bg-white/10"
+                      : "text-slate-500 hover:bg-slate-100"
                   }`}
                 >
                   {range}
@@ -319,32 +320,32 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
             </div>
 
             {timeRange === "custom" && (
-              <div className="flex items-center gap-2 bg-white/5 p-1 rounded-xl border border-white/10">
-                <input 
+              <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-slate-200">
+                <input
                   type="date"
                   value={customStartDate}
                   onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="bg-transparent text-white text-[10px] font-bold outline-none px-2 py-1"
+                  className="bg-transparent text-slate-600 text-xs font-bold outline-none px-2 py-1"
                 />
-                <span className="text-white/40 text-[10px]">to</span>
-                <input 
+                <span className="text-slate-400 text-xs">to</span>
+                <input
                   type="date"
                   value={customEndDate}
                   onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="bg-transparent text-white text-[10px] font-bold outline-none px-2 py-1"
+                  className="bg-transparent text-slate-600 text-xs font-bold outline-none px-2 py-1"
                 />
               </div>
             )}
           </div>
 
           <div className="flex items-center gap-2 ml-auto">
-            <p className="text-white/60 text-[10px] uppercase tracking-widest font-bold bg-white/5 px-4 py-2 rounded-full border border-white/10">
-              Showing stats for: <span className="text-white">{currentSelectionLabel}</span>
+            <p className="text-slate-400 text-xs uppercase tracking-widest font-bold bg-white px-4 py-2 rounded-full border border-slate-200">
+              Showing stats for: <span className="text-slate-700">{currentSelectionLabel}</span>
             </p>
             {selectedBar && (
-              <button 
-                onClick={() => setSelectedBar(null)} 
-                className="text-[10px] uppercase tracking-widest font-bold text-rose-400 hover:text-rose-300 bg-rose-500/10 px-3 py-2 rounded-full border border-rose-500/20 transition-all flex items-center gap-1"
+              <button
+                onClick={() => setSelectedBar(null)}
+                className="text-xs uppercase tracking-widest font-bold text-teal-400 hover:text-teal-300 bg-teal-500/10 px-3 py-2 rounded-full border border-teal-500/20 transition-all flex items-center gap-1"
               >
                 Reset Filter
               </button>
@@ -368,49 +369,49 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
             <h3 className={`text-lg font-semibold ${isDarkMode ? "text-white" : "text-gray-800"}`}>
               {timeRange === "daily" ? "Daily Activity (Last 7 Days)" : timeRange === "weekly" ? "Weekly Activity (This Week Mon-Sun)" : timeRange === "monthly" ? "Daily Activity (Current Month)" : "Monthly Activity (Current Year)"}
             </h3>
-            {selectedBar && <span className="text-[10px] font-bold text-rose-500 uppercase tracking-widest animate-pulse">Filtering Active</span>}
+            {selectedBar && <span className="text-xs font-bold text-teal-500 uppercase tracking-widest animate-pulse">Filtering Active</span>}
           </div>
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData} onClick={handleChartClick}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? "rgba(255,255,255,0.05)" : "#f1f5f9"} />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: isDarkMode ? "rgba(255,255,255,0.4)" : "#64748b", fontSize: 12 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: isDarkMode ? "rgba(255,255,255,0.4)" : "#64748b", fontSize: 12 }} />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: isDarkMode ? "rgba(255,255,255,0.4)" : "#64748b", fontSize: "0.875rem" }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: isDarkMode ? "rgba(255,255,255,0.4)" : "#64748b", fontSize: "0.875rem" }} />
                 <Tooltip
                   cursor={{ fill: isDarkMode ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)" }}
-                  contentStyle={{ 
-                    borderRadius: "12px", 
-                    border: "none", 
+                  contentStyle={{
+                    borderRadius: "12px",
+                    border: "none",
                     boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)",
                     backgroundColor: isDarkMode ? "#1e293b" : "#ffffff",
                     color: isDarkMode ? "#ffffff" : "#000000"
                   }}
                   formatter={(value: any) => [`${value}h`, "Time"]}
                 />
-                <Bar 
-                  dataKey="hours" 
-                  radius={[4, 4, 0, 0]} 
+                <Bar
+                  dataKey="hours"
+                  radius={[4, 4, 0, 0]}
                   className="cursor-pointer"
                 >
                   {chartData.map((entry, index) => (
-                    <Cell 
-                      key={`cell-${index}`} 
-                      fill={selectedBar === entry.name ? "#f43f5e" : (isDarkMode ? "rgba(244, 63, 94, 0.4)" : "rgba(244, 63, 94, 0.2)")}
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={selectedBar === entry.name ? PALETTE.orange : PALETTE.teal}
                     />
                   ))}
                 </Bar>
-                <Line 
-                  type="monotone" 
-                  dataKey="hours" 
-                  stroke="#14b8a6" 
-                  strokeWidth={2} 
-                  dot={{ r: 2, fill: "#14b8a6" }} 
+                <Line
+                  type="monotone"
+                  dataKey="hours"
+                  stroke={PALETTE.blue}
+                  strokeWidth={2}
+                  dot={{ r: 2, fill: PALETTE.blue }}
                   activeDot={{ r: 4 }}
                 />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
-          <p className="text-[10px] text-gray-500 mt-4 text-center">Click on a bar to filter summary & distribution below</p>
+          <p className="text-xs text-gray-500 mt-4 text-center">Click on a bar to filter summary & distribution below</p>
         </div>
 
         {/* Topic Distribution Chart */}
@@ -418,29 +419,29 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
           <div className="flex items-center justify-between mb-6">
             <h3 className={`text-lg font-semibold ${isDarkMode ? "text-white" : "text-gray-800"}`}>Distribution</h3>
             <div className={`flex p-1 rounded-xl border relative z-10 ${isDarkMode ? "bg-white/10 border-white/20" : "bg-gray-200 border-gray-300"}`}>
-              <button 
-                onClick={(e) => { 
+              <button
+                onClick={(e) => {
                   e.preventDefault();
-                  e.stopPropagation(); 
-                  setPieChartMode("mainTask"); 
+                  e.stopPropagation();
+                  setPieChartMode("mainTask");
                 }}
-                className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer relative z-20 ${
-                  pieChartMode === "mainTask" 
-                    ? "bg-white text-gray-900 shadow-lg" 
+                className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer relative z-20 ${
+                  pieChartMode === "mainTask"
+                    ? "bg-white text-gray-900 shadow-lg"
                     : (isDarkMode ? "text-white/80 hover:text-white" : "text-gray-900/70 hover:text-gray-900")
                 }`}
               >
                 Task
               </button>
-              <button 
-                onClick={(e) => { 
+              <button
+                onClick={(e) => {
                   e.preventDefault();
-                  e.stopPropagation(); 
-                  setPieChartMode("topic"); 
+                  e.stopPropagation();
+                  setPieChartMode("topic");
                 }}
-                className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer relative z-20 ${
-                  pieChartMode === "topic" 
-                    ? "bg-white text-gray-900 shadow-lg" 
+                className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer relative z-20 ${
+                  pieChartMode === "topic"
+                    ? "bg-white text-gray-900 shadow-lg"
                     : (isDarkMode ? "text-white/80 hover:text-white" : "text-gray-900/70 hover:text-gray-900")
                 }`}
               >
@@ -466,10 +467,10 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip 
-                  contentStyle={{ 
-                    borderRadius: "12px", 
-                    border: "none", 
+                <Tooltip
+                  contentStyle={{
+                    borderRadius: "12px",
+                    border: "none",
                     boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)",
                     backgroundColor: isDarkMode ? "#1e293b" : "#ffffff",
                     color: isDarkMode ? "#ffffff" : "#000000"
@@ -487,7 +488,7 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
             <h3 className={`text-lg font-semibold ${isDarkMode ? "text-white" : "text-gray-800"}`}>
               Task & Topic Summary ({currentSelectionLabel})
             </h3>
-            <span className={`px-3 py-1 rounded-full bg-rose-500/10 text-rose-500 text-[10px] font-bold uppercase tracking-widest`}>
+            <span className={`px-3 py-1 rounded-full bg-teal-500/10 text-teal-500 text-xs font-bold uppercase tracking-widest`}>
               {summaryData.length} entries
             </span>
           </div>
@@ -505,7 +506,7 @@ export default function Dashboard({ sessions, isDarkMode }: DashboardProps) {
                   <tr key={idx} className={`group transition-colors ${isDarkMode ? "hover:bg-white/5" : "hover:bg-gray-50"}`}>
                     <td className={`py-2 font-bold ${isDarkMode ? "text-white" : "text-gray-800"}`}>{item.mainTask}</td>
                     <td className={`py-2 ${isDarkMode ? "text-white/60" : "text-gray-600"}`}>{item.topic}</td>
-                    <td className="py-2 text-right font-mono font-bold text-rose-500">
+                    <td className="py-2 text-right font-mono font-bold text-teal-500">
                       {formatDuration(item.duration)}
                     </td>
                   </tr>
@@ -531,7 +532,7 @@ function StatCard({ title, value, icon, isDarkMode }: { title: string; value: st
     <div className={`p-6 rounded-2xl shadow-lg border ${isDarkMode ? "bg-white/10 border-white/10" : "bg-gray-50 border-gray-100"}`}>
       <div className="flex items-center justify-between mb-2">
         <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{title}</p>
-        <div className="text-rose-500">{icon}</div>
+        <div className="text-teal-500">{icon}</div>
       </div>
       <p className={`text-3xl font-bold ${isDarkMode ? "text-white" : "text-gray-900"}`}>{value}</p>
     </div>

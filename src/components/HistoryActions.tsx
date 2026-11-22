@@ -87,14 +87,15 @@ export default function HistoryActions({ sessions, onInsert, isDarkMode }: Histo
     }
 
     // CSV Columns: Date (2025-01-11), Start time, End time, Main task, Topic, duration in minutes
-    const headers = ["Date", "Start time", "End time", "Main task", "Topic", "Duration (min)"];
+    const headers = ["Date", "Start time", "End time", "Main task", "Topic", "Duration (min)", "Break (min)"];
     const rows = filteredSessions.map(s => [
       s.date,
       s.startTime,
       s.endTime,
       `"${s.mainTask.replace(/"/g, '""')}"`,
       `"${s.topic.replace(/"/g, '""')}"`,
-      s.duration
+      s.duration,
+      s.breakSeconds==null?'':Number((s.breakSeconds/60).toFixed(2))
     ]);
 
     const csvContent = [
@@ -115,14 +116,14 @@ export default function HistoryActions({ sessions, onInsert, isDarkMode }: Histo
   };
 
   return (
-    <div className="w-full max-w-4xl flex gap-4 px-4 mb-2">
+    <div className="history-actions w-full max-w-4xl flex gap-4 px-4 mb-2">
       <button
         onClick={() => setIsInsertOpen(true)}
         className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl font-bold transition-all shadow-lg active:scale-95 ${
           isDarkMode ? "bg-white/10 text-white hover:bg-white/20" : "bg-white text-gray-800 hover:bg-gray-50"
         }`}
       >
-        <Plus className="w-5 h-5 text-rose-500" />
+        <Plus className="w-5 h-5 text-teal-500" />
         Insert Session
       </button>
       <button
@@ -166,7 +167,7 @@ export default function HistoryActions({ sessions, onInsert, isDarkMode }: Histo
                   {/* Left Column: Task Info */}
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
                         <Tag className="w-3 h-3" /> Main Task
                       </label>
                       <input
@@ -182,7 +183,7 @@ export default function HistoryActions({ sessions, onInsert, isDarkMode }: Histo
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
                         <BookOpen className="w-3 h-3" /> Topic
                       </label>
                       <input
@@ -201,7 +202,7 @@ export default function HistoryActions({ sessions, onInsert, isDarkMode }: Histo
                   {/* Right Column: Time & Date Info */}
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
                         <CalendarIcon className="w-3 h-3" /> Date & Duration
                       </label>
                       <div className="flex gap-2">
@@ -227,7 +228,7 @@ export default function HistoryActions({ sessions, onInsert, isDarkMode }: Histo
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
                         <Clock className="w-3 h-3" /> Time Range (24h format)
                       </label>
                       <div className="grid grid-cols-2 gap-2">

@@ -1,21 +1,26 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import cors from "cors";
+import { openDatabase } from "./server/database.ts";
+import { createApi } from "./server/api.ts";
 import dotenv from "dotenv";
 
 dotenv.config();
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT || 3000);
+  const HOST = process.env.HOST || '127.0.0.1';
 
-  app.use(cors());
-  app.use(express.json());
+  // Caddy is the sole proxy on the private deployment network.
+  if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
+  app.disable('x-powered-by');
 
-  // API Routes
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
+  app.use(express.json({ limit: '256kb' }));
+  app.use('/api', createApi(openDatabase()));
+  app.use((req, res, next) => {
+    if (/(^|\/)\.data(\/|$)/.test(req.path)) { res.sendStatus(404); return; }
+    next();
   });
 
   // Vite middleware for development
@@ -33,7 +38,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  app.listen(PORT, HOST, () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
