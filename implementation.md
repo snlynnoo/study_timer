@@ -198,3 +198,10 @@ Session creation and `PATCH /api/sessions/:id` accept optional `break_seconds`: 
 `TaskAchievement.tsx` renders account task progress below the To-do calendar/list using the already fetched task array. `src/lib/taskAchievement.ts` builds one row per day of the displayed month and excludes adjacent-month calendar cells. Counts and percentages are recomputed after successful task mutations and month navigation; no new database schema or endpoint is required.
 
 Planned/achieved summary totals include scheduled dates through today; future plans are shown separately. Achievement is the ratio of total completed due tasks to total due tasks, rounded to one decimal, with null for an empty denominator. The count chart shows future planned tasks but omits future achieved values; the percentage chart uses null for future days and days without a plan. Completed status is attributed to scheduled dates because the task schema does not retain completion timestamps/history. These are current-plan statistics, not an on-time completion audit. Loading/fetch failures do not present fabricated scores. Tests cover month boundaries, weighted percentages, task-status changes, future plans, empty plans, and leap years.
+
+
+## Task ordering
+
+`todos.sort_order` is added by an idempotent SQLite migration. Existing tasks retain creation order through the `created_at,id` tie-breaker. New tasks and tasks moved to another date append after the current maximum position. Editing and completion preserve the position.
+
+`PUT /api/todos/order` accepts `{date, ids}` for the authenticated account. It validates the exact set of tasks for that day, rejects duplicates and stale/foreign/cross-date IDs, then updates all positions atomically. The client uses Motion Reorder with grip-only pointer dragging, touch support, and Up/Down keys; optimistic changes roll back on save failure. Integration tests cover persistence, migration, ownership, validation, and preserving order through task mutations.

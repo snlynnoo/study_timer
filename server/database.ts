@@ -54,6 +54,8 @@ export function openDatabase(filename = process.env.DATABASE_PATH || path.resolv
       admin_id TEXT PRIMARY KEY REFERENCES users(id), through_id INTEGER NOT NULL DEFAULT 0
     );
   `);
+  const todoColumns=db.prepare('PRAGMA table_info(todos)').all();
+  if(!todoColumns.some(column=>column.name==='sort_order'))db.exec('ALTER TABLE todos ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
   const columns=db.prepare('PRAGMA table_info(sessions)').all();
   if(!columns.some(column=>column.name==='break_seconds')) db.exec('ALTER TABLE sessions ADD COLUMN break_seconds INTEGER CHECK(break_seconds IS NULL OR break_seconds >= 0)');
   const userColumns=db.prepare('PRAGMA table_info(users)').all();

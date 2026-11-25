@@ -253,11 +253,27 @@ export function createApi(db: Database, setupFile = path.resolve('.data/setup-co
   api.get('/todos', route((req,res) => {
     const from=dateValue(req.query.from), to=dateValue(req.query.to);
     if (from>to) throw new HttpError(400,'The end date must follow the start date.');
-    res.json(db.prepare('SELECT * FROM todos WHERE user_id=? AND date>=? AND date<=? ORDER BY date,created_at,id').all(res.locals.user.id,from,to).map(safeTodo));
+    res.json(db.prepare('SELECT * FROM todos WHERE user_id=? AND date>=? AND date<=? ORDER BY date,sort_order,created_at,id').all(res.locals.user.id,from,to).map(safeTodo));
+  }));
+  api.put('/todos/order', route((req,res) => {
+    const date=dateValue(req.body.date), ids=req.body.ids;
+    if(!Array.isArray(ids)||ids.some(id=>typeof id!=='string')||new Set(ids).size!==ids.length)throw new HttpError(400,'Invalid task order.');
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const current=db.prepare('SELECT id FROM todos WHERE user_id=? AND date=?').all(res.locals.user.id,date);
+      const valid=new Set(current.map(task=>task.id));
+      if(ids.length!==current.length||ids.some(id=>!valid.has(id)))throw new HttpError(409,'The task list changed. Reload it and try again.');
+      const update=db.prepare('UPDATE todos SET sort_order=?,updated_at=? WHERE id=? AND user_id=? AND date=?');
+      const timestamp=now();
+      ids.forEach((id,index)=>update.run(index,timestamp,id,res.locals.user.id,date));
+      db.exec('COMMIT');
+    }catch(error){db.exec('ROLLBACK');throw error;}
+    res.json(db.prepare('SELECT * FROM todos WHERE user_id=? AND date=? ORDER BY sort_order,created_at,id').all(res.locals.user.id,date).map(safeTodo));
   }));
   api.post('/todos', route((req,res) => {
     const id=randomUUID(), values=todoValues(req.body);
-    db.prepare('INSERT INTO todos (id,user_id,date,title,notes,completed,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)').run(id,res.locals.user.id,...values,now(),now());
+    const position=(db.prepare('SELECT COALESCE(MAX(sort_order),-1)+1 AS position FROM todos WHERE user_id=? AND date=?').get(res.locals.user.id,values[0]) as Row).position;
+    db.prepare('INSERT INTO todos (id,user_id,date,title,notes,completed,created_at,updated_at,sort_order) VALUES (?,?,?,?,?,?,?,?,?)').run(id,res.locals.user.id,...values,now(),now(),position);
     res.status(201).json(safeTodo(db.prepare('SELECT * FROM todos WHERE id=? AND user_id=?').get(id,res.locals.user.id) as Row));
   }));
   api.patch('/todos/:id', route((req,res) => {
@@ -265,7 +281,8 @@ export function createApi(db: Database, setupFile = path.resolve('.data/setup-co
     if (!existing) throw new HttpError(404,'Task not found.');
     const body: Row={...existing,completed:!!existing.completed};
     for (const field of ['date','title','notes','completed']) if (req.body[field] !== undefined) body[field]=req.body[field];
-    db.prepare('UPDATE todos SET date=?,title=?,notes=?,completed=?,updated_at=? WHERE id=? AND user_id=?').run(...todoValues(body),now(),req.params.id,res.locals.user.id);
+    const position=body.date===existing.date?existing.sort_order:(db.prepare('SELECT COALESCE(MAX(sort_order),-1)+1 AS position FROM todos WHERE user_id=? AND date=?').get(res.locals.user.id,body.date) as Row).position;
+    db.prepare('UPDATE todos SET date=?,title=?,notes=?,completed=?,updated_at=?,sort_order=? WHERE id=? AND user_id=?').run(...todoValues(body),now(),position,req.params.id,res.locals.user.id);
     res.json(safeTodo(db.prepare('SELECT * FROM todos WHERE id=? AND user_id=?').get(req.params.id,res.locals.user.id) as Row));
   }));
   api.delete('/todos/:id', route((req,res) => {

@@ -135,6 +135,8 @@ Open **To-do**, select a date, and use **Add task**. Tasks support a title, note
 
 Dates with unfinished tasks show only the number still to do below the date; completing a task reduces that number. Dates whose tasks are all complete show an olive checkmark without a count. Red indicators mean no tasks have been completed on that date; green indicators mean at least one has been completed, while the number still shows only the remaining tasks. Use the month arrows to browse and **Today** to return to the current date. Tasks are saved per account.
 
+Drag the grip on the left of a task up or down to change its position within that date. You can also focus the grip and press the Up/Down arrow keys. The order is saved to your account and survives reloads; newly added tasks and tasks moved to another date appear at the end.
+
 ## Track task achievement
 
 The **Task achievement** panel below the To-do calendar follows the displayed month. **Plan vs achieved** shows daily planned and currently completed task counts. **Achievement %** switches to daily completion percentages. Planned counts use muted teal (#779FA1), and achieved counts and percentages use Tech Blue (#3D62A4). Select the information button in the top-right corner for the calculation details. The cards summarize tasks due through today in that month: planned, achieved, and the overall rate (`completed ÷ planned × 100`). Future scheduled tasks are listed separately and do not lower this rate. Historical months include the whole month; future-only plans show no achievement score yet.
