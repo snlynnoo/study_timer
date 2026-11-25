@@ -133,7 +133,15 @@ Stats uses a horizontal distribution chart with a separate row for every categor
 
 Open **To-do**, select a date, and use **Add task**. Tasks support a title, notes, a date, and completion status. Edit to update details or move a task to another date. The remove action asks for confirmation.
 
-Dates with unfinished tasks show only the number still to do below the date; completing a task reduces that number. Dates whose tasks are all complete show an olive checkmark without a count. Rust-colored pending indicators identify unfinished work. Use the month arrows to browse and **Today** to return to the current date. Tasks are saved per account.
+Dates with unfinished tasks show only the number still to do below the date; completing a task reduces that number. Dates whose tasks are all complete show an olive checkmark without a count. Red indicators mean no tasks have been completed on that date; green indicators mean at least one has been completed, while the number still shows only the remaining tasks. Use the month arrows to browse and **Today** to return to the current date. Tasks are saved per account.
+
+## Track task achievement
+
+The **Task achievement** panel below the To-do calendar follows the displayed month. **Plan vs achieved** shows daily planned and currently completed task counts. **Achievement %** switches to daily completion percentages. Planned counts use muted teal (#779FA1), and achieved counts and percentages use Tech Blue (#3D62A4). Select the information button in the top-right corner for the calculation details. The cards summarize tasks due through today in that month: planned, achieved, and the overall rate (`completed ÷ planned × 100`). Future scheduled tasks are listed separately and do not lower this rate. Historical months include the whole month; future-only plans show no achievement score yet.
+
+Completing/reopening, adding, editing, moving, or removing a task updates the panel after a successful save. Each task has equal weight; the overall rate is based on task totals, not the average of daily percentages. Days without planned tasks have no percentage, rather than counting as failures.
+
+Completed tasks are grouped by their scheduled date. This reflects the current plan and completion state; it does not claim when a task was actually completed or whether it was finished on time. Deleting or rescheduling a task changes the plan used in these calculations.
 
 ## Send feedback and read the administrator inbox
 

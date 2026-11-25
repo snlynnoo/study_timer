@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { addMonths, eachDayOfInterval, endOfMonth, endOfWeek, format, isSameMonth, isToday, parseISO, startOfMonth, startOfWeek } from 'date-fns';
 import { CalendarDays, ChevronLeft, ChevronRight, Plus, Pencil, Trash2, X, Check, Circle } from 'lucide-react';
 import { api } from '../lib/api';
+import TaskAchievement from './TaskAchievement';
 
 interface Todo {id:string;date:string;title:string;notes:string;completed:boolean;created_at:string;updated_at:string}
 interface Draft {id?:string;date:string;title:string;notes:string;completed:boolean}
@@ -17,6 +18,7 @@ export default function TodoView() {
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const [message,setMessage]=useState('');
+  const [loadError,setLoadError]=useState(false);
   const requestVersion=useRef(0);
   const titleInput=useRef<HTMLInputElement>(null);
   const first=startOfWeek(startOfMonth(month),{weekStartsOn:1});
@@ -29,9 +31,9 @@ export default function TodoView() {
 
   useEffect(()=>{
     const version=++requestVersion.current;
-    setLoading(true);setTodos([]);setError('');
+    setLoading(true);setTodos([]);setError('');setLoadError(false);
     api<Todo[]>(`/todos?from=${from}&to=${to}`).then(data=>{if(requestVersion.current===version)setTodos(data);})
-      .catch(e=>{if(requestVersion.current===version)setError(e.message);})
+      .catch(e=>{if(requestVersion.current===version){setError(e.message);setLoadError(true);}})
       .finally(()=>{if(requestVersion.current===version)setLoading(false);});
     return()=>{requestVersion.current++;};
   },[from,to]);
@@ -86,10 +88,10 @@ export default function TodoView() {
         <div className="calendar-days" role="group" aria-label={format(month,'MMMM yyyy')}>
           {cells.map(date=>{
             const key=dateKey(date),dateTasks=todos.filter(task=>task.date===key),count=dateTasks.length,pending=dateTasks.filter(task=>!task.completed).length;
-            return <button key={key} disabled={busy} aria-pressed={key===selected} aria-label={`${format(date,'EEEE, MMMM d, yyyy')}${isToday(date)?', today':''}${count?pending?`, ${pending} ${pending===1?'task':'tasks'} to do`:', all tasks complete':''}`} className={`calendar-day ${!isSameMonth(date,month)?'outside-month':''} ${isToday(date)?'today':''} ${key===selected?'selected':''}`} onClick={()=>choose(date)}><span>{format(date,'d')}</span><span className={`day-task-count ${count ? pending ? 'pending' : 'complete' : ''}`} aria-hidden="true">{count ? <>{pending ? <Circle size={10}/> : <Check size={11}/>}{pending>0&&<span>{pending}</span>}</> : null}</span></button>;
+            return <button key={key} disabled={busy} aria-pressed={key===selected} aria-label={`${format(date,'EEEE, MMMM d, yyyy')}${isToday(date)?', today':''}${count?pending?`, ${pending} ${pending===1?'task':'tasks'} to do`:', all tasks complete':''}`} className={`calendar-day ${!isSameMonth(date,month)?'outside-month':''} ${isToday(date)?'today':''} ${key===selected?'selected':''}`} onClick={()=>choose(date)}><span>{format(date,'d')}</span><span className={`day-task-count ${count ? pending ? pending<count ? 'progress' : 'pending' : 'complete' : ''}`} aria-hidden="true">{count ? <>{pending ? <Circle size={10}/> : <Check size={11}/>}{pending>0&&<span>{pending}</span>}</> : null}</span></button>;
           })}
         </div>
-        <div className="calendar-legend task-status-legend"><span><Circle size={11}/>Pending tasks</span><span><Check size={13}/>All complete</span></div>
+        <div className="calendar-legend task-status-legend"><span><Circle size={11}/>Not started</span><span className="tasks-in-progress"><Circle size={11}/>In progress</span><span><Check size={13}/>All complete</span></div>
       </section>
       <section className="todo-day" aria-labelledby="selected-day-heading" aria-busy={loading}>
         <div className="todo-day-heading"><div><h2 id="selected-day-heading">{format(selectedDate,'EEEE, MMM d')}</h2><p>{loading?'Loading tasks…':`${dayTodos.length} ${dayTodos.length===1?'task':'tasks'} · ${completed} completed`}</p></div><button className="todo-add" disabled={busy||loading} onClick={()=>{setDraft({date:selected,title:'',notes:'',completed:false});setRemoving(null);setError('');setMessage('');}}><Plus size={17}/>Add task</button></div>
@@ -111,5 +113,6 @@ export default function TodoView() {
         </div>
       </section>
     </div>
+    <TaskAchievement tasks={todos} month={month} loading={loading} unavailable={loadError}/>
   </section>;
 }

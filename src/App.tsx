@@ -9,13 +9,14 @@ import PomodoroInfo from "./components/PomodoroInfo";
 import HistoryActions from "./components/HistoryActions";
 import SettingsPage from "./components/SettingsPage";
 import AuthView from "./components/AuthView";
-import { Settings as SettingsIcon, LayoutDashboard, Timer as TimerIcon, List, AlertCircle, LogOut, User as UserIcon, Info, Check, ArrowUpRight, Clock3, Target, Flame, CalendarDays } from "lucide-react";
+import { Settings as SettingsIcon, LayoutDashboard, Timer as TimerIcon, List, AlertCircle, User as UserIcon, Info, Check, ArrowUpRight, Clock3, Target, Flame, CalendarDays } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { api, type LocalUser } from "./lib/api";
 import UsersView from "./components/UsersView";
 import TextSizeControl from "./components/TextSizeControl";
 import TodoView from "./components/TodoView";
 import LiveClock from "./components/LiveClock";
+import UserMenu from "./components/UserMenu";
 import { normalizeTimerTheme, timerColor } from "./lib/palette";
 import { usePomodoroTimer } from "./hooks/usePomodoroTimer";
 import type { TimerEvent } from "./lib/timerMachine";
@@ -308,12 +309,9 @@ export default function App() {
           <NavButton active={view === 'settings'} onClick={()=>setView('settings')} icon={<SettingsIcon size={19}/>} label="Settings"/>
           <NavButton active={view === 'feedback'} onClick={()=>setView('feedback')} icon={<MessageSquare size={19}/>} label="Feedback" badge={user.role==='admin'?unreadFeedback:0} badgeLabel={`${unreadFeedback} unread feedback messages`}/>
         </nav>
-        <div className="sidebar-bottom">
-          <div className="sidebar-profile"><span className="profile-avatar">{userDisplayName.slice(0,1)}</span><span><strong>{userDisplayName}</strong><small>{user.role === 'admin' ? 'Administrator' : 'Your personal workspace'}</small></span><button onClick={handleLogout} title="Sign Out" aria-label="Sign Out"><LogOut size={17}/></button></div>
-        </div>
       </aside>
       <div className="workspace" inert={timer.awaitingLongBreak}>
-        <header className="workspace-header"><TextSizeControl value={fontSize} onChange={setFontSize}/><div className="header-actions"><LiveClock/><button className="icon-button mobile-signout" onClick={handleLogout} aria-label="Sign Out" title="Sign Out"><LogOut size={17}/></button></div></header>
+        <header className="workspace-header"><TextSizeControl value={fontSize} onChange={setFontSize}/><div className="header-actions"><LiveClock/><UserMenu name={userDisplayName} role={user.role} onLogout={handleLogout}/></div></header>
         <main className="workspace-main">
         {error && (
           <div className="mb-8 w-full max-w-md">
@@ -400,14 +398,14 @@ export default function App() {
               exit={{ opacity: 0, x: -20 }}
               className="w-full flex flex-col items-center"
             >
-              <div className="w-full max-w-2xl mb-2 flex items-center justify-between px-4">
+              {(isSyncing || lastSyncStatus === "error") && <div className="w-full max-w-2xl mb-2 flex items-center justify-between px-4">
                 <div className="flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${isSyncing ? "bg-amber-400 animate-pulse" : lastSyncStatus === "error" ? "bg-red-800" : "bg-emerald-500"}`} />
                   <span className="text-slate-500 text-xs font-medium">
-                    {isSyncing ? "Syncing..." : lastSyncStatus === "error" ? "Sync Failed" : "Saved locally"}
+                    {isSyncing ? "Syncing..." : lastSyncStatus === "error" ? "Sync Failed" : ""}
                   </span>
                 </div>
-              </div>
+              </div>}
               
               <HistoryActions 
                 sessions={sessions} 

@@ -191,3 +191,10 @@ Session creation and `PATCH /api/sessions/:id` accept optional `break_seconds`: 
 
 
 `TimeInput.tsx` shares fixed-colon hour/minute controls between History editing and Insert Session. The separator is a separate non-editable element. Segments accept digits, advance from two-digit hours to minutes, pad single digits on blur, and support validated numeric or HH:mm paste. `src/lib/timeInput.ts` validates complete 24-hour values and calculates duration across midnight; incomplete input never produces NaN or saves a malformed time.
+
+
+## Task achievement panel
+
+`TaskAchievement.tsx` renders account task progress below the To-do calendar/list using the already fetched task array. `src/lib/taskAchievement.ts` builds one row per day of the displayed month and excludes adjacent-month calendar cells. Counts and percentages are recomputed after successful task mutations and month navigation; no new database schema or endpoint is required.
+
+Planned/achieved summary totals include scheduled dates through today; future plans are shown separately. Achievement is the ratio of total completed due tasks to total due tasks, rounded to one decimal, with null for an empty denominator. The count chart shows future planned tasks but omits future achieved values; the percentage chart uses null for future days and days without a plan. Completed status is attributed to scheduled dates because the task schema does not retain completion timestamps/history. These are current-plan statistics, not an on-time completion audit. Loading/fetch failures do not present fabricated scores. Tests cover month boundaries, weighted percentages, task-status changes, future plans, empty plans, and leap years.
