@@ -300,6 +300,36 @@ export function createApi(db: Database, setupFile = path.resolve('.data/setup-co
       .run(id,res.locals.user.id,subject,message,now());
     res.status(201).json({id,message:'Your feedback has been sent to the administrator.'});
   }));
+  api.get('/feedback/mine',route((req,res)=>{
+    const page=Number(req.query.page??1);
+    if(!Number.isSafeInteger(page)||page<1||page>1_000_000)throw new HttpError(400,'Invalid feedback page.');
+    const total=Number(db.prepare('SELECT count(*) AS count FROM feedback WHERE user_id=?').get(res.locals.user.id)!.count);
+    const items=db.prepare('SELECT f.*,COALESCE((SELECT MAX(r.created_at) FROM feedback_replies r WHERE r.feedback_id=f.id),f.created_at) AS last_activity_at FROM feedback f WHERE user_id=? ORDER BY last_activity_at DESC,f.created_at DESC,f.id DESC LIMIT 50 OFFSET ?').all(res.locals.user.id,(page-1)*50);
+    res.json({items,total,page,pageSize:50});
+  }));
+  api.get('/feedback/:id/replies',route((req,res)=>{
+    const feedback=db.prepare('SELECT user_id FROM feedback WHERE id=?').get(req.params.id) as Row|undefined;
+    if(!feedback||(res.locals.user.role!=='admin'&&feedback.user_id!==res.locals.user.id))throw new HttpError(404,'Feedback not found.');
+    const items=db.prepare(`SELECT r.id,r.feedback_id,r.message,r.created_at,r.sender_role,u.name AS sender_name FROM feedback_replies r
+      JOIN users u ON u.id=r.sender_id WHERE r.feedback_id=? ORDER BY r.created_at,r.rowid`).all(req.params.id);
+    res.json({items});
+  }));
+  api.post('/feedback/:id/replies',route((req,res)=>{
+    const feedback=db.prepare('SELECT user_id FROM feedback WHERE id=?').get(req.params.id) as Row|undefined;
+    if(!feedback||(res.locals.user.role!=='admin'&&feedback.user_id!==res.locals.user.id))throw new HttpError(404,'Feedback not found.');
+    const message=text(req.body.message,5000).trim();
+    if(!message)throw new HttpError(400,'Enter a reply.');
+    const recent=db.prepare('SELECT count(*) AS count FROM feedback_replies WHERE sender_id=? AND created_at>=?').get(res.locals.user.id,new Date(Date.now()-3600_000).toISOString())!;
+    if(Number(recent.count)>=60){res.setHeader('Retry-After','3600');throw new HttpError(429,'Too many replies. Please try again later.');}
+    const id=randomUUID();
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.prepare('INSERT INTO feedback_replies (id,feedback_id,sender_id,sender_role,message,created_at) VALUES (?,?,?,?,?,?)').run(id,req.params.id,res.locals.user.id,res.locals.user.role,message,now());
+      db.prepare('UPDATE feedback SET read_at=? WHERE id=?').run(res.locals.user.role==='admin'?now():null,req.params.id);
+      db.exec('COMMIT');
+    }catch(error){db.exec('ROLLBACK');throw error;}
+    res.status(201).json({id,message:'Message sent.'});
+  }));
   api.get('/feedback/unread-count',route((_req,res)=>{
     if(res.locals.user.role!=='admin')throw new HttpError(403,'Administrator access required.');
     const count=Number(db.prepare('SELECT count(*) AS count FROM feedback WHERE read_at IS NULL').get()!.count);
@@ -311,8 +341,8 @@ export function createApi(db: Database, setupFile = path.resolve('.data/setup-co
     if(!Number.isSafeInteger(page)||page<1||page>1_000_000)throw new HttpError(400,'Invalid inbox page.');
     const total=Number(db.prepare('SELECT count(*) AS count FROM feedback').get()!.count);
     const unread=Number(db.prepare('SELECT count(*) AS count FROM feedback WHERE read_at IS NULL').get()!.count);
-    const items=db.prepare(`SELECT f.*,u.name AS sender_name,u.email AS sender_email FROM feedback f
-      JOIN users u ON u.id=f.user_id ORDER BY f.created_at DESC,f.id DESC LIMIT 50 OFFSET ?`).all((page-1)*50);
+    const items=db.prepare(`SELECT f.*,u.name AS sender_name,u.email AS sender_email,COALESCE((SELECT MAX(r.created_at) FROM feedback_replies r WHERE r.feedback_id=f.id),f.created_at) AS last_activity_at FROM feedback f
+      JOIN users u ON u.id=f.user_id ORDER BY last_activity_at DESC,f.created_at DESC,f.id DESC LIMIT 50 OFFSET ?`).all((page-1)*50);
     res.json({items,total,unread,page,pageSize:50});
   }));
   api.patch('/feedback/:id',route((req,res)=>{

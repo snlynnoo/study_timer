@@ -422,3 +422,30 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .todo-drag-handle {display:grid;place-items:center;flex-shrink:0;padding:5px 2px;margin-left:-6px;color:var(--muted);cursor:grab;touch-action:none;border-radius:6px}
 .todo-drag-handle:active {cursor:grabbing}.todo-drag-handle:hover {background:var(--canvas);color:var(--palette-blue)}
 .todo-drag-handle[aria-disabled="true"] {opacity:.35;cursor:default}
+
+/* Keep page margins, navigation and account surfaces dark during a running timer. */
+.workspace {display:flow-root}
+:root:has(.study-dark) {background:#192c44;color-scheme:dark}
+body:has(.study-dark) {background:#192c44}
+.study-dark .workspace-header,.study-dark .header-user-dropdown {background:var(--surface)}
+.study-dark .nav-button.selected,.study-dark .nav-button.selected:hover {background:#304c70;color:#edf2f8}
+.study-dark .nav-button.selected>svg {color:#c2d5f2}
+.study-dark .header-clock,.study-dark .header-clock strong {color:#c2d5f2}
+.study-dark .header-user-avatar:hover,.study-dark .header-user-avatar[aria-expanded="true"] {box-shadow:0 0 0 3px #7b592a}
+.study-dark .header-user-dropdown>button:hover {background:#304c70;color:#edf2f8}
+.optional-label {font-size:.8125rem;font-weight:400;color:var(--muted)}
+
+.feedback-threads {margin-top:28px}
+.feedback-replies {border-top:1px solid var(--line);margin-top:22px;padding-top:20px}
+.feedback-replies h3 {font-size:1rem;font-weight:600;margin-bottom:14px}
+.feedback-reply {background:var(--canvas);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:12px}
+.feedback-reply header {display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px}
+.feedback-reply header strong {font-size:.875rem}.feedback-reply .feedback-body {margin:12px 0 0}
+.feedback-reply-form {margin-top:22px}.feedback-reply-form label {display:block;font-size:.9375rem;font-weight:600;margin-bottom:8px}
+.feedback-reply-form textarea {display:block;resize:vertical;width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font:inherit}
+
+.feedback-heading-actions {display:flex;flex-wrap:wrap;gap:10px}
+.feedback-compose-cancel {margin-left:12px}
+.feedback-reply.from-admin {margin-left:20px;background:var(--palette-blue-soft)}
+.feedback-reply.from-user {margin-right:20px}
+.study-dark .feedback-reply.from-admin {background:#304c70}

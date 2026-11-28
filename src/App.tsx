@@ -223,9 +223,9 @@ export default function App() {
     onRestore:state=>{setMainTask(state.focusTask||'');setTopic(state.focusTopic||'');}});
   const {mode,timeLeft,isActive,setMode,toggle:toggleTimer,reset:resetTimer}=timer;
   const startOrPauseTimer=(active:boolean)=>{
-    if(active&&mode==='work'&&(!mainTask.trim()||!topic.trim())) {
+    if(active&&mode==='work'&&!mainTask.trim()) {
       setTaskDetailsRequested(true);
-      const input=!mainTask.trim()?mainTaskInput.current:topicInput.current;
+      const input=mainTaskInput.current;
       input?.focus();input?.scrollIntoView({behavior:'smooth',block:'center'});
       return;
     }
@@ -364,13 +364,12 @@ export default function App() {
                 <div className="focus-side">
                   <section className="intention-card">
                     <div className="card-heading"><span className="small-icon"><BookIcon/></span><h2>Current task</h2></div>
-                    {taskDetailsRequested&&(!mainTask.trim()||!topic.trim())&&<p className="task-details-prompt" role="alert">Enter your main task/topic and sub-task/topic, then select Start focus.</p>}
+                    {taskDetailsRequested&&!mainTask.trim()&&<p className="task-details-prompt" role="alert">Enter your main task/topic, then select Start focus.</p>}
                     <label htmlFor="main-task">Main Task / Topic</label>
                     <input ref={mainTaskInput} id="main-task" value={mainTask} onChange={e=>setMainTask(e.target.value)} placeholder="What are you working on?" maxLength={1000} aria-required="true" aria-invalid={taskDetailsRequested&&!mainTask.trim()} aria-describedby={taskDetailsRequested&&!mainTask.trim()?'main-task-error':undefined}/>
                     {taskDetailsRequested&&!mainTask.trim()&&<p id="main-task-error" className="task-field-error">Please enter a main task/topic.</p>}
-                    <label htmlFor="topic">Sub-Task / Topic</label>
-                    <input ref={topicInput} id="topic" value={topic} onChange={e=>setTopic(e.target.value)} placeholder="Break it into something small" maxLength={1000} aria-required="true" aria-invalid={taskDetailsRequested&&!topic.trim()} aria-describedby={taskDetailsRequested&&!topic.trim()?'topic-error':undefined}/>
-                    {taskDetailsRequested&&!topic.trim()&&<p id="topic-error" className="task-field-error">Please enter a sub-task/topic.</p>}
+                    <label htmlFor="topic">Sub-Task / Topic <span className="optional-label">(optional)</span></label>
+                    <input ref={topicInput} id="topic" value={topic} onChange={e=>setTopic(e.target.value)} placeholder="Break it into something small" maxLength={1000}/>
                   </section>
                 </div>
               </div>

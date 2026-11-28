@@ -91,11 +91,11 @@ In **Users**, the **Active** checkbox controls sign-in. Deactivation revokes cur
 ## Use the timer
 
 1. Open **Timer**.
-2. Enter the **Main Task / Topic** and **Sub-Task / Topic** for your session.
+2. Enter the **Main Task / Topic** for your session; **Sub-Task / Topic** is optional.
 3. Select **Work**, then **Start focus**.
 4. Pause/resume as needed. Reset restarts the selected interval; an unfinished focus is not added to completed history.
 
-Both Main Task / Topic and Sub-Task / Topic are required before starting or resuming focus. If either is blank (including spaces only), the timer stays paused and highlights the first missing field. Enter the details, then select **Start focus** or **Resume session** again. Breaks do not require task details.
+Main Task / Topic is required before starting or resuming focus. If it is blank (including spaces only), the timer stays paused and highlights that field. Sub-Task / Topic may be left blank. Enter a main task, then select **Start focus** or **Resume session** again. Breaks do not require task details.
 
 Defaults are 25 minutes of work, a 5-minute short break, and a 15-minute long break. Saved account settings may differ.
 
@@ -145,13 +145,15 @@ Completing/reopening, adding, editing, moving, or removing a task updates the pa
 
 Completed tasks are grouped by their scheduled date. This reflects the current plan and completion state; it does not claim when a task was actually completed or whether it was finished on time. Deleting or rescheduling a task changes the plan used in these calculations.
 
-## Send feedback and read the administrator inbox
+## Feedback conversations
 
-Open **Feedback** directly below **Settings**. Ordinary users can enter a subject (up to 200 characters) and a message (up to 5,000 characters), then select **Send feedback**. A confirmation appears after the message is saved. Up to ten messages can be submitted per account in a rolling hour.
+Open **Feedback** directly below **Settings**. Select **New feedback** to start a separate conversation. Ordinary users can enter a subject (up to 200 characters) and a message (up to 5,000 characters), then select **Send feedback**. A confirmation appears after the message is saved. Up to ten messages can be submitted per account in a rolling hour.
 
 Administrators see an **Inbox** on the same page. Select a message to read its full text, sender name/email, and submission date/time. Use **Mark read** or **Mark unread** to update its status, **Refresh** for new messages, and the page controls to browse older messages. Read status is shared between administrators. Ordinary users cannot access the inbox or other users' feedback, including through the API.
 
-Messages are stored in the server's SQLite database and included in database backups. They appear directly in the app; this feature does not send email notifications. Development remains local until deployment is explicitly requested.
+Select a conversation under **Inbox** (administrators) or **My feedback** (users), type in **Message**, and select **Send message**. Both the original sender and administrators can continue the same chat; **New feedback** starts a separate topic. Each message supports up to 5,000 characters, with a limit of 60 follow-up messages per account per hour. The open conversation refreshes every five seconds and when the window regains focus, without clearing your draft. Only the original sender and administrators can access that conversation. User follow-ups mark it unread for administrators again; an administrator reply marks it read. Conversations are listed by latest activity. Failed sends preserve the draft.
+
+Messages and replies are stored in the server's SQLite database and included in database backups. They appear directly in the app; this feature does not send email notifications. Development remains local until deployment is explicitly requested.
 
 Administrators also see the unread message count beside **Feedback** in the sidebar. It refreshes on sign-in, when the window regains focus, and every 30 seconds. Opening/refreshing the inbox and marking messages read or unread updates the badge. When no unread messages remain, the selected Feedback tab shows its normal orange dot. Ordinary users do not see an inbox count.
 

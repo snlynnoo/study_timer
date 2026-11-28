@@ -45,6 +45,11 @@ export function openDatabase(filename = process.env.DATABASE_PATH || path.resolv
       id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id),
       subject TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL, read_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS feedback_replies (
+      id TEXT PRIMARY KEY, feedback_id TEXT NOT NULL REFERENCES feedback(id),
+      sender_id TEXT NOT NULL REFERENCES users(id), sender_role TEXT NOT NULL DEFAULT 'admin' CHECK(sender_role IN ('admin','user')), message TEXT NOT NULL, created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS feedback_replies_thread ON feedback_replies(feedback_id,created_at,id);
     CREATE INDEX IF NOT EXISTS feedback_created ON feedback(created_at DESC,id DESC);
     CREATE INDEX IF NOT EXISTS feedback_user_created ON feedback(user_id,created_at);
     CREATE TABLE IF NOT EXISTS registration_events (
@@ -54,6 +59,9 @@ export function openDatabase(filename = process.env.DATABASE_PATH || path.resolv
       admin_id TEXT PRIMARY KEY REFERENCES users(id), through_id INTEGER NOT NULL DEFAULT 0
     );
   `);
+  const replyColumns=db.prepare('PRAGMA table_info(feedback_replies)').all();
+  if(replyColumns.some(column=>column.name==='admin_id'))db.exec('ALTER TABLE feedback_replies RENAME COLUMN admin_id TO sender_id');
+  if(!replyColumns.some(column=>column.name==='sender_role'))db.exec("ALTER TABLE feedback_replies ADD COLUMN sender_role TEXT NOT NULL DEFAULT 'admin' CHECK(sender_role IN ('admin','user'))");
   const todoColumns=db.prepare('PRAGMA table_info(todos)').all();
   if(!todoColumns.some(column=>column.name==='sort_order'))db.exec('ALTER TABLE todos ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
   const columns=db.prepare('PRAGMA table_info(sessions)').all();
